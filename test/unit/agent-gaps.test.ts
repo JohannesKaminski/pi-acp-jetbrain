@@ -179,7 +179,7 @@ test('PiAcpAgent: unstable_forkSession rejects unknown sessions and relative cwd
   )
 })
 
-test('PiAcpAgent: resumeSession restores the stored session and returns modes/configOptions', async () => {
+test('PiAcpAgent: resumeSession restores the stored session and returns configOptions', async () => {
   const conn = new FakeAgentSideConnection()
   const root = mkdtempSync(join(tmpdir(), 'pi-acp-resume-'))
   const sessionFile = join(root, 'session.jsonl')
@@ -220,7 +220,8 @@ test('PiAcpAgent: resumeSession restores the stored session and returns modes/co
     assert.equal(spawned.length, 1)
     assert.equal((spawned[0] as Record<string, unknown>).sessionPath, sessionFile)
     assert.ok(Array.isArray((res as any).configOptions))
-    assert.ok((res as any).modes)
+    assert.equal((res as any).modes, undefined)
+    assert.ok((res as any).configOptions)
   } finally {
     PiRpcProcess.spawn = originalSpawn
   }

@@ -50,7 +50,7 @@ try {
   assert(typeof forkedId === 'string' && forkedId.length > 0, 'fork missing sessionId')
   assert(forkedId !== sessionId, `fork returned the source sessionId ${forkedId}`)
   assert(Array.isArray(forked?.configOptions), 'fork missing configOptions array')
-  assert(typeof forked?.modes === 'object' && forked?.modes !== null, 'fork missing modes')
+  assert(forked?.modes === undefined, 'fork must not send thinking levels as modes')
   assert(typeof forked?._meta?.piAcp?.fork?.entryId === 'string', 'fork missing _meta.piAcp.fork.entryId')
 
   // The fork's pi process is live and can answer a prompt on its own branch.
@@ -65,7 +65,7 @@ try {
   // session/resume: reattach the source session (its subprocess was released by fork).
   const resumed = await h.expectResult(6, 'session/resume', { sessionId, cwd, mcpServers: [] }, { timeoutMs: 60_000 })
   assert(Array.isArray(resumed?.configOptions), 'resume missing configOptions array')
-  assert(typeof resumed?.modes === 'object' && resumed?.modes !== null, 'resume missing modes')
+  assert(resumed?.modes === undefined, 'resume must not send thinking levels as modes')
 
   // providers/list from a probe pi process.
   const prov = await h.expectResult(7, 'providers/list', {})

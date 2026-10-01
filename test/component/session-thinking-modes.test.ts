@@ -9,7 +9,7 @@ class FakeConn {
   }
 }
 
-test('PiAcpAgent: setSessionMode maps to pi setThinkingLevel + emits current_mode_update', async () => {
+test('PiAcpAgent: legacy setSessionMode rejects unknown sessions', async () => {
   const conn = new FakeConn()
   const agent = new PiAcpAgent(conn as any)
 

@@ -1,4 +1,5 @@
-// Smoke: session/set_mode emits current_mode_update and config_option_update.
+// Smoke: legacy session/set_mode still sets the thinking level; the change is reported
+// only as a config_option_update (no current_mode_update: thinking levels are not modes).
 import { SmokeHarness, assert } from './lib/acp-smoke.mjs'
 
 const h = new SmokeHarness().start()
@@ -8,10 +9,13 @@ try {
   assert(typeof created?.sessionId === 'string', 'missing sessionId')
 
   await h.expectResult(3, 'session/set_mode', { sessionId: created.sessionId, modeId: 'low' }, { timeoutMs: 30_000 })
-  await h.waitForUpdate(u => u?.sessionUpdate === 'current_mode_update', { timeoutMs: 15_000 })
-  await h.waitForUpdate(u => u?.sessionUpdate === 'config_option_update', { timeoutMs: 15_000 })
+  const lowLevel = u =>
+    u?.sessionUpdate === 'config_option_update' &&
+    u.configOptions?.some?.(o => o?.category === 'thought_level' && o.currentValue === 'low')
+  await h.waitForUpdate(lowLevel, { timeoutMs: 15_000 })
+  assert(!h.updates.some(u => u?.sessionUpdate === 'current_mode_update'), 'unexpected current_mode_update')
 
-  console.log('OK smoke-modes (current_mode_update + config_option_update observed)')
+  console.log('OK smoke-modes (set_mode applied; config_option_update observed)')
 } catch (err) {
   await h.close().catch(() => {})
   console.error(`FAIL smoke-modes: ${err.message}`)

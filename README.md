@@ -35,7 +35,7 @@ The adapter also sends `usage_update` on `session/new` and `session/load`, and a
 
 Text input requests use the unstable ACP elicitation API when the client declares form elicitation in `initialize`; otherwise they are cancelled with a visible notice. Requests that fit permissions route through ACP permissions. An editor request shows a cancellation notice because elicitation forms hold primitive fields only.
 
-The model selector works through a mapping from pi models to ACP provider info. Pi keeps provider credentials outside the RPC surface.
+Thinking levels are offered as a `thought_level` config option, limited to the levels the current model supports. They are not sent as session modes, so clients show one thinking selector; `session/set_mode` still accepts a level for older clients. The model selector works through a mapping from pi models to ACP provider info. Pi keeps provider credentials outside the RPC surface.
 
 Slash commands load file-based prompts from pi and a set of built-ins: `/compact`, `/export`, `/session`, `/name`, `/queue`, `/changelog`, `/steering`, `/follow-up`. Skills appear as `/skill:<name>` when enabled in pi settings.
 
@@ -281,3 +281,5 @@ After you rebuild the adapter, open a new chat. Node keeps the old files loaded,
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+

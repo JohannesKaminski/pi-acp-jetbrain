@@ -53,12 +53,10 @@ function fixture() {
 }
 
 function assertUpdates(conn: FakeAgentSideConnection, level: string, levels: string[]) {
-  assert.equal(conn.updates.length, 2)
-  assert.deepEqual(conn.updates[0], {
-    sessionId: 's1',
-    update: { sessionUpdate: 'current_mode_update', currentModeId: level }
-  })
-  const update = conn.updates[1].update as {
+  // Thinking levels go out only as the thought_level config option, never as a mode update.
+  assert.equal(conn.updates.length, 1)
+  assert.equal(conn.updates[0].update.sessionUpdate, 'config_option_update')
+  const update = conn.updates[0].update as {
     configOptions: Array<{ id: string; currentValue: string; options: Array<{ value: string }> }>
   }
   const option = update.configOptions.find(option => option.id === 'thought_level')!
@@ -179,11 +177,7 @@ for (const load of [false, true]) {
       const result = load
         ? await agent.loadSession({ sessionId: 's1', cwd: process.cwd(), mcpServers: [] })
         : await agent.newSession({ cwd: process.cwd(), mcpServers: [] })
-      assert.equal(result.modes?.currentModeId, state.thinkingLevel)
-      assert.deepEqual(
-        result.modes?.availableModes.map(mode => mode.id),
-        levels
-      )
+      assert.equal((result as { modes?: unknown }).modes, undefined)
       const option = result.configOptions?.find(option => option.id === 'thought_level')
       assert.equal(option?.currentValue, state.thinkingLevel)
       assert.deepEqual(
@@ -258,7 +252,7 @@ for (const failure of ['discovery', 'missing-current', 'inconsistent-current', '
     assert.equal(store.get('s1')?.sessionFile, sessionFile)
     shouldFail = false
     const result = await agent.loadSession({ sessionId: 's1', cwd: root, mcpServers: [] })
-    assert.equal(result.modes?.currentModeId, 'max')
+    assert.equal(result.configOptions?.find(option => option.id === 'thought_level')?.currentValue, 'max')
     assert.equal(spawns, 2)
     assert.equal(restoredDisposed, 1)
     assert.equal(historyReads, 1)

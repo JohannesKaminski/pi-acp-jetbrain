@@ -502,7 +502,9 @@ export class PiAcpAgent implements ACPAgent {
       this.cleanupFailedNewSession(session.sessionId, state)
       throw maybeAuthRequiredError(err) ?? RequestError.internalError({}, String((err as Error)?.message ?? err))
     }
-    const { configOptions, models, modes } = configuration
+    // Thinking levels go out only as the `thought_level` config option, never as legacy
+    // session `modes` (which clients would show as a second thinking selector).
+    const { configOptions, models } = configuration
 
     const quietStartup = getQuietStartup(params.cwd)
     const updateNotice = buildUpdateNotice()
@@ -535,7 +537,6 @@ export class PiAcpAgent implements ACPAgent {
       sessionId: session.sessionId,
       configOptions,
       models,
-      modes,
       _meta: {
         piAcp: {
           startupInfo: preludeText || null
@@ -1260,11 +1261,10 @@ export class PiAcpAgent implements ACPAgent {
           // (its file is untouched; the fork lives in its own new file).
           await this.closeManagedSessionsExcept(sessionId)
 
-          const { modes, configOptions } = await getSessionConfiguration(proc)
+          const { configOptions } = await getSessionConfiguration(proc)
 
           return {
             sessionId,
-            modes,
             configOptions,
             _meta: {
               piAcp: {
@@ -1323,8 +1323,8 @@ export class PiAcpAgent implements ACPAgent {
     })
 
     await this.closeManagedSessionsExcept(session.sessionId)
-    const { modes, configOptions } = await getSessionConfiguration(session.proc)
-    return { modes, configOptions }
+    const { configOptions } = await getSessionConfiguration(session.proc)
+    return { configOptions }
   }
 
   async closeSession(params: CloseSessionRequest): Promise<CloseSessionResponse> {
@@ -1418,7 +1418,9 @@ export class PiAcpAgent implements ACPAgent {
       this.sessions.close(session.sessionId)
       throw err
     }
-    const { configOptions, models, modes } = configuration
+    // Thinking levels go out only as the `thought_level` config option, never as legacy
+    // session `modes` (which clients would show as a second thinking selector).
+    const { configOptions, models } = configuration
     const fileCommands = loadSlashCommands(params.cwd)
 
     // Policy: within a single ACP connection (one Zed window), keep only one live pi subprocess.
@@ -1559,7 +1561,6 @@ export class PiAcpAgent implements ACPAgent {
     const response = {
       configOptions,
       models,
-      modes,
       _meta: {
         piAcp: {
           startupInfo: restoredStartupInfo
@@ -1871,12 +1872,8 @@ async function emitConfigOptionsUpdate(
   sessionId: string,
   proc: PiRpcProcess
 ): Promise<SessionConfigOption[]> {
-  const { configOptions, modes } = await getSessionConfiguration(proc)
+  const { configOptions } = await getSessionConfiguration(proc)
 
-  await conn.sessionUpdate({
-    sessionId,
-    update: { sessionUpdate: 'current_mode_update', currentModeId: modes.currentModeId }
-  })
   await conn.sessionUpdate({
     sessionId,
     update: {

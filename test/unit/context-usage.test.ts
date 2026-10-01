@@ -132,7 +132,7 @@ test('PiAcpAgent: switching the model config option refreshes context usage', as
 
   assert.deepEqual(
     conn.updates.map(u => u.update.sessionUpdate),
-    ['current_mode_update', 'config_option_update', 'usage_update']
+    ['config_option_update', 'usage_update']
   )
   assert.deepEqual(conn.updates.at(-1), {
     sessionId: 's1',
@@ -169,7 +169,7 @@ test('PiAcpAgent: unstable_setSessionModel refreshes context usage', async () =>
   assert.equal(proc.getSessionStatsCount, 1)
   assert.deepEqual(
     conn.updates.map(u => u.update.sessionUpdate),
-    ['current_mode_update', 'config_option_update', 'usage_update']
+    ['config_option_update', 'usage_update']
   )
   assert.deepEqual(conn.updates.at(-1), {
     sessionId: 's1',

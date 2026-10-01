@@ -47,8 +47,11 @@ try {
   await h2.expectResult(1, 'initialize', { protocolVersion: 1 })
   const loaded = await h2.expectResult(2, 'session/load', { sessionId, cwd, mcpServers: [] })
   assert(typeof loaded?.configOptions === 'object' && loaded?.configOptions !== null, 'load missing configOptions')
-  assert(typeof loaded?.modes === 'object' && loaded?.modes !== null, 'load missing modes')
-  assert(Array.isArray(loaded?.modes?.availableModes), 'load modes.availableModes not an array')
+  assert(loaded?.modes === undefined, 'load must not send thinking levels as modes')
+  assert(
+    loaded?.configOptions?.some?.(o => o?.category === 'thought_level'),
+    'load missing thought_level config option'
+  )
   // LoadSessionResponse.models is `{availableModels, currentModelId} | null`.
   assert(
     loaded?.models === null || (typeof loaded?.models === 'object' && Array.isArray(loaded?.models?.availableModels)),
