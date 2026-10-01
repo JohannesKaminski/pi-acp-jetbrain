@@ -135,8 +135,26 @@ so the `.iml` exclusions and project dictionary load, then re-run Whole Project
 
 ## Next steps
 
+- Verify the IDE bridge after the ACP SDK 1.6 upgrade (open risk below): in a fresh IntelliJ chat, IDE tools must still appear and work.
 - Start a fresh IntelliJ chat after the next dist rebuild and complete the F-033 checklist (new PID, build revision match, cancel/restore/shutdown).
 - Add Windows CI coverage (check.yml currently runs Linux only; Windows paths and named-pipe logic stay untested).
+
+## 2026-10-01 open risk: IDE bridge after ACP SDK 1.6 (unverified)
+
+`fe95ac8` upgraded `@agentclientprotocol/sdk` 0.26 → 1.6. SDK 1.x redesigned the
+experimental MCP-over-ACP protocol: no `mcp/connect`, stateless `mcp/message`
+keyed by `serverId` + `requestId`, and the server descriptor's `id` renamed
+`serverId`. The bridge (`src/acp/mcp-bridge.ts`) still speaks the old
+connect/connection-ID protocol through extension methods and reads
+`serverId ?? id`. SDK 1.6 still routes `mcp/message` to `extMethod`, but which
+protocol the installed IntelliJ build speaks is untested.
+
+- Symptom: no `ide_*` tools in IntelliJ chats; "IDE bridge: … unavailable
+  (mcp/connect returned no connectionId)" or an `mcp/connect` error at startup.
+- Check: fresh IntelliJ chat with `use_idea_mcp: true` in `~/.jetbrains/acp.json`;
+  `PI_ACP_DEBUG_BRIDGE=1` captures the descriptor (`serverId` vs `id`).
+- Fix if broken: add the stateless protocol to the bridge, keeping the old path
+  for older IntelliJ builds.
 
 ## F-036: nested-pi IPC guard (fixed)
 
