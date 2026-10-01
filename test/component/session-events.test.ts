@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PiAcpSession } from '../../src/acp/session.js'
-import { FakeAgentSideConnection, FakePiRpcProcess, asAgentConn } from '../helpers/fakes.js'
+import { FakeAgentSideConnection, FakePiRpcProcess, asAgentConn, type FakePiEvent } from '../helpers/fakes.js'
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 
@@ -328,42 +328,67 @@ test('PiAcpSession: emits agent_message_chunk for auto_retry_end', async () => {
   })
 })
 
-test('PiAcpSession: emits agent_message_chunk for auto_compaction_start', async () => {
-  const conn = new FakeAgentSideConnection()
-  const proc = new FakePiRpcProcess()
+const COMPACTION_NOTICES: Array<{ name: string; events: FakePiEvent[]; texts: string[] }> = [
+  {
+    name: 'threshold compaction',
+    events: [
+      { type: 'compaction_start', reason: 'threshold' },
+      { type: 'compaction_end', reason: 'threshold', aborted: false, willRetry: false }
+    ],
+    texts: [
+      'Context nearing limit; running automatic compaction...\n\n',
+      'Compaction finished; earlier context was summarized.\n\n'
+    ]
+  },
+  {
+    name: 'overflow compaction with retry',
+    events: [
+      { type: 'compaction_start', reason: 'overflow' },
+      { type: 'compaction_end', reason: 'overflow', aborted: false, willRetry: true }
+    ],
+    texts: [
+      'Context window exceeded; compacting and retrying...\n\n',
+      'Compaction finished; earlier context was summarized.\n\n'
+    ]
+  },
+  {
+    name: 'aborted compaction',
+    events: [{ type: 'compaction_end', reason: 'threshold', aborted: true, willRetry: false }],
+    texts: ['Compaction cancelled.\n\n']
+  },
+  {
+    name: 'failed compaction',
+    events: [
+      { type: 'compaction_end', reason: 'overflow', aborted: false, willRetry: false, errorMessage: 'summary failed' }
+    ],
+    texts: ['Compaction failed: summary failed\n\n']
+  },
+  {
+    // `/compact` reports its own result through the slash command.
+    name: 'manual compaction',
+    events: [
+      { type: 'compaction_start', reason: 'manual' },
+      { type: 'compaction_end', reason: 'manual', aborted: false, willRetry: false }
+    ],
+    texts: []
+  }
+]
 
-  makeSession(conn, proc)
+for (const { name, events, texts } of COMPACTION_NOTICES) {
+  test(`PiAcpSession: compaction notices for ${name}`, async () => {
+    const conn = new FakeAgentSideConnection()
+    const proc = new FakePiRpcProcess()
 
-  proc.emit({ type: 'auto_compaction_start' } as any)
+    makeSession(conn, proc)
+    for (const ev of events) proc.emit(ev)
+    await flush()
 
-  await flush()
-
-  assert.equal(conn.updates.length, 1)
-  assert.deepEqual(conn.updates[0]!.update, {
-    sessionUpdate: 'agent_message_chunk',
-    content: { type: 'text', text: 'Context nearing limit, running automatic compaction...' }
+    assert.deepEqual(
+      conn.updates.map(u => u.update),
+      texts.map(text => ({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } }))
+    )
   })
-})
-
-test('PiAcpSession: emits agent_message_chunk for auto_compaction_end', async () => {
-  const conn = new FakeAgentSideConnection()
-  const proc = new FakePiRpcProcess()
-
-  makeSession(conn, proc)
-
-  proc.emit({ type: 'auto_compaction_end' } as any)
-
-  await flush()
-
-  assert.equal(conn.updates.length, 1)
-  assert.deepEqual(conn.updates[0]!.update, {
-    sessionUpdate: 'agent_message_chunk',
-    content: {
-      type: 'text',
-      text: 'Automatic compaction finished; context was summarized to continue the session.'
-    }
-  })
-})
+}
 
 test('PiAcpSession: preserves ordering when auto_retry_start is interleaved with text_delta events', async () => {
   const conn = new FakeAgentSideConnection()

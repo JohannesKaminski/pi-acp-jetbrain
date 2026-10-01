@@ -1014,25 +1014,19 @@ export class PiAcpSession {
         break
       }
 
-      case 'auto_compaction_start': {
-        this.emit({
-          sessionUpdate: 'agent_message_chunk',
-          content: {
-            type: 'text',
-            text: 'Context nearing limit, running automatic compaction...'
-          } satisfies ContentBlock
-        })
+      case 'compaction_start': {
+        const text = formatCompactionStart(ev)
+        if (text) {
+          this.emit({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } satisfies ContentBlock })
+        }
         break
       }
 
-      case 'auto_compaction_end': {
-        this.emit({
-          sessionUpdate: 'agent_message_chunk',
-          content: {
-            type: 'text',
-            text: 'Automatic compaction finished; context was summarized to continue the session.'
-          } satisfies ContentBlock
-        })
+      case 'compaction_end': {
+        const text = formatCompactionEnd(ev)
+        if (text) {
+          this.emit({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } satisfies ContentBlock })
+        }
         break
       }
 
@@ -1246,6 +1240,26 @@ function optionIndex(optionId: string): number | null {
 
   const index = Number(rawIndex)
   return Number.isSafeInteger(index) && index >= 0 && String(index) === rawIndex ? index : null
+}
+
+// pi emits compaction_start/end for manual and automatic compaction. Manual `/compact`
+// already reports its result through the slash command, so only automatic runs are announced.
+function formatCompactionStart(ev: PiRpcEvent): string | null {
+  switch (ev.reason) {
+    case 'threshold':
+      return 'Context nearing limit; running automatic compaction...\n\n'
+    case 'overflow':
+      return 'Context window exceeded; compacting and retrying...\n\n'
+    default:
+      return null
+  }
+}
+
+function formatCompactionEnd(ev: PiRpcEvent): string | null {
+  if (ev.reason !== 'threshold' && ev.reason !== 'overflow') return null
+  if (ev.aborted === true) return 'Compaction cancelled.\n\n'
+  if (typeof ev.errorMessage === 'string' && ev.errorMessage) return `Compaction failed: ${ev.errorMessage}\n\n`
+  return 'Compaction finished; earlier context was summarized.\n\n'
 }
 
 function formatAutoRetryMessage(ev: PiRpcEvent): string {
