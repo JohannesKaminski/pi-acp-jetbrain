@@ -330,6 +330,7 @@ export class PiAcpSession {
   // Used to map abort semantics to ACP stopReason.
   // Applies to the currently running turn.
   private cancelRequested = false
+  private settledTurnStats: PiSessionStats | null | undefined = undefined
 
   // Current in-flight turn (if any). Additional prompts are queued.
   private pendingTurn: PendingTurn | null = null
@@ -565,11 +566,13 @@ export class PiAcpSession {
    * Queued updates are flushed even when the stats query fails or times out, so callers
    * can await this before resolving `session/prompt`.
    */
-  async publishContextUsage(): Promise<void> {
+  async publishContextUsage(): Promise<PiSessionStats | null> {
+    let stats: PiSessionStats | null = null
     try {
       // Older/stubbed pi processes may not expose the stats RPC at all.
       if (typeof this.proc.getSessionStats === 'function') {
-        const update = toUsageUpdate(await this.proc.getSessionStats(SESSION_STATS_TIMEOUT_MS))
+        stats = await this.proc.getSessionStats(SESSION_STATS_TIMEOUT_MS)
+        const update = toUsageUpdate(stats)
         if (update) this.emit(update)
       }
     } catch {
@@ -577,12 +580,24 @@ export class PiAcpSession {
     }
 
     await this.flushEmits()
+    return stats
+  }
+
+  /**
+   * Stats fetched when the last turn settled, so the agent can build the prompt response
+   * `usage` without a second `get_session_stats` round trip. `null` means the fetch failed;
+   * `undefined` means the turn ended without settling (error, exit, dispose). Clears on read.
+   */
+  takeSettledTurnStats(): PiSessionStats | null | undefined {
+    const stats = this.settledTurnStats
+    this.settledTurnStats = undefined
+    return stats
   }
 
   private async settleTurn(): Promise<void> {
     // Ensure all updates derived from pi events (plus the final usage update) are
     // delivered before we resolve the ACP `session/prompt` request.
-    await this.publishContextUsage()
+    this.settledTurnStats = await this.publishContextUsage()
 
     const reason: StopReason = this.cancelRequested ? 'cancelled' : 'end_turn'
     this.pendingTurn?.resolve(reason)

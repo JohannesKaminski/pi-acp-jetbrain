@@ -27,9 +27,9 @@ Edit events carry a file location when pi reports a path. The adapter resolves r
 
 Each session starts with a pi startup block. Set `quietStartup: true` in pi settings to hide it.
 
-After each settled turn the adapter reports token use and cost from pi session statistics. It sends the data on the unstable `usage` field.
+When a turn settles the adapter makes one `get_session_stats` call and reports two things from it. Context window occupancy from pi `contextUsage` goes out as an ACP `usage_update` before the prompt resolves. Cumulative token use and cost go on the unstable `usage` field of the prompt response. The call waits at most 1 second. If it fails or times out, the turn still ends and both reports are left out. A turn that ends without settling (pi error, process exit) fetches the stats once for the `usage` field only.
 
-The adapter also reports context window occupancy from pi `contextUsage` as ACP `usage_update`. It sends one after each turn, on `session/new` and `session/load`, and after a model switch. Right after compaction pi has no trusted token count, so the client keeps the previous value.
+The adapter also sends `usage_update` on `session/new` and `session/load`, and after a model switch. Right after compaction pi has no trusted token count, so the client keeps the previous value.
 
 Text input requests use the unstable ACP elicitation API when the client has it. Requests that fit permissions route through ACP permissions. An editor request shows a cancellation notice because elicitation forms hold primitive fields only.
 

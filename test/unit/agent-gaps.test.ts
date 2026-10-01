@@ -274,7 +274,8 @@ test('PiAcpAgent: prompt includes cumulative usage when pi reports session stats
         return 'end_turn'
       },
       async cancel() {},
-      wasCancelRequested: () => false
+      wasCancelRequested: () => false,
+      takeSettledTurnStats: () => undefined
     })
   }
 

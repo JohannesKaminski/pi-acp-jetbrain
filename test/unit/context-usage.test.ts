@@ -202,3 +202,41 @@ test('PiAcpAgent: switching the thinking level does not publish context usage', 
     false
   )
 })
+
+test('PiAcpAgent: a settled turn fetches session stats once for usage_update and prompt usage', async () => {
+  const conn = new FakeAgentSideConnection()
+  const proc = new FakePiRpcProcess()
+  proc.sessionStats = {
+    tokens: { input: 10, output: 5, total: 15 },
+    cost: 0.5,
+    contextUsage: { tokens: 300, contextWindow: 100_000 }
+  }
+  const session = makeSession(proc, conn)
+  const agent = new PiAcpAgent(asAgentConn(conn), {} as any)
+
+  const p = session.prompt('hello')
+  proc.emit({ type: 'agent_settled' })
+  assert.equal(await p, 'end_turn')
+
+  const usage = await (agent as any).collectTurnUsage(session)
+
+  assert.equal(proc.getSessionStatsCount, 1)
+  assert.deepEqual(usage, { totalTokens: 15, inputTokens: 10, outputTokens: 5, _meta: { piAcp: { cost: 0.5 } } })
+  assert.deepEqual(
+    conn.updates.filter(u => u.update.sessionUpdate === 'usage_update').map(u => u.update),
+    [{ sessionUpdate: 'usage_update', used: 300, size: 100_000 }]
+  )
+})
+
+test('PiAcpAgent: a turn that ends without settling fetches session stats for prompt usage', async () => {
+  const conn = new FakeAgentSideConnection()
+  const proc = new FakePiRpcProcess()
+  proc.sessionStats = { tokens: { input: 1, output: 2, total: 3 } }
+  const session = makeSession(proc, conn)
+  const agent = new PiAcpAgent(asAgentConn(conn), {} as any)
+
+  const usage = await (agent as any).collectTurnUsage(session)
+
+  assert.equal(proc.getSessionStatsCount, 1)
+  assert.deepEqual(usage, { totalTokens: 3, inputTokens: 1, outputTokens: 2 })
+})

@@ -41,7 +41,7 @@ import { PiRpcProcess } from '../pi-rpc/process.js'
 import { getPiCommand } from '../pi-rpc/command.js'
 import { listPiSessions, findPiSession } from './pi-sessions.js'
 import { normalizePiAssistantText, normalizePiMessageText } from './translate/pi-messages.js'
-import { sessionStatsToAcpUsage, withTimeout } from './usage.js'
+import { sessionStatsToAcpUsage } from './usage.js'
 import { piModelsToProviderInfo } from './providers.js'
 import { toolResultToText } from './translate/pi-tools.js'
 import {
@@ -1144,9 +1144,13 @@ export class PiAcpAgent implements ACPAgent {
     })
   }
   private async collectTurnUsage(session: PiAcpSession): Promise<Usage | null> {
+    // A settled turn already fetched stats for its context usage_update; reuse them.
+    const settled = session.takeSettledTurnStats()
+    if (settled !== undefined) return sessionStatsToAcpUsage(settled)
+
+    // The turn ended without settling (error, process exit, dispose): fetch once.
     try {
-      const stats = await withTimeout(session.proc.getSessionStats(), 2_500)
-      return sessionStatsToAcpUsage(stats)
+      return sessionStatsToAcpUsage(await session.proc.getSessionStats(2_500))
     } catch {
       return null
     }
