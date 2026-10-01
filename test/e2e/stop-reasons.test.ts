@@ -38,6 +38,9 @@ test('e2e: a non-retryable provider error fails the prompt with the provider mes
     })
     // Whatever streamed before the failure still reached the client.
     assert.match(c.agentText(), /started/)
+    // The failure is also recorded in the chat, so it survives a reload (clients may show
+    // the JSON-RPC error only transiently, e.g. IntelliJ's banner above the input box).
+    assert.match(c.agentText(), /Request failed: insufficient_quota: You exceeded your current quota/)
   } finally {
     await c.close()
   }

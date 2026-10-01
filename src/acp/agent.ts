@@ -1075,10 +1075,18 @@ export class PiAcpAgent implements ACPAgent {
     // Updates streamed before the failure have already reached the client.
     if (result === 'error') {
       if (session.wasCancelRequested()) return { stopReason: 'cancelled', usage }
-      throw RequestError.internalError(
-        usage ? { usage } : undefined,
-        session.lastError ?? 'pi prompt failed (no diagnostic retained)'
-      )
+      const message = session.lastError ?? 'pi prompt failed (no diagnostic retained)'
+      // Also record the failure in the chat: clients may show the JSON-RPC error only
+      // transiently (IntelliJ: a banner above the input box), leaving no trace after a reload.
+      // The first line suffices there; process-exit diagnostics append a stderr tail.
+      await this.sendUpdate({
+        sessionId: session.sessionId,
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: `Request failed: ${message.split('\n')[0]}` }
+        }
+      })
+      throw RequestError.internalError(usage ? { usage } : undefined, message)
     }
 
     if (result === 'end_turn') {
