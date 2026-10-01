@@ -1009,3 +1009,64 @@ test('PiAcpSession: cancelled turn still reports cancelled after usage publish',
     [{ sessionUpdate: 'usage_update', used: 42, size: 100 }]
   )
 })
+
+function assistantEnd(stopReason: string, errorMessage?: string): FakePiEvent {
+  return { type: 'message_end', message: { role: 'assistant', stopReason, errorMessage } as any }
+}
+
+test('PiAcpSession: only the last assistant message before agent_settled decides the stop reason', async () => {
+  const conn = new FakeAgentSideConnection()
+  const proc = new FakePiRpcProcess()
+  const session = makeSession(conn, proc)
+
+  const p = session.prompt('hello')
+  proc.emit(assistantEnd('error', 'prompt is too long'))
+  proc.emit({ type: 'message_end', message: { role: 'user' } as any })
+  proc.emit(assistantEnd('stop'))
+  proc.emit({ type: 'agent_settled' })
+
+  assert.equal(await p, 'end_turn')
+})
+
+test('PiAcpSession: an error turn records lastError and does not leak into the next turn', async () => {
+  const conn = new FakeAgentSideConnection()
+  const proc = new FakePiRpcProcess()
+  const session = makeSession(conn, proc)
+
+  const first = session.prompt('one')
+  proc.emit(assistantEnd('error', 'insufficient_quota'))
+  proc.emit({ type: 'agent_settled' })
+  assert.equal(await first, 'error')
+  assert.equal(session.lastError, 'insufficient_quota')
+
+  // A turn without any assistant message (e.g. handled by an extension) ends normally.
+  const second = session.prompt('two')
+  proc.emit({ type: 'agent_settled' })
+  assert.equal(await second, 'end_turn')
+})
+
+test('PiAcpSession: an error without a message still records a diagnostic', async () => {
+  const conn = new FakeAgentSideConnection()
+  const proc = new FakePiRpcProcess()
+  const session = makeSession(conn, proc)
+
+  const p = session.prompt('hello')
+  proc.emit(assistantEnd('error'))
+  proc.emit({ type: 'agent_settled' })
+
+  assert.equal(await p, 'error')
+  assert.equal(session.lastError, 'pi model request failed')
+})
+
+test('PiAcpSession: a client cancel wins over the final stop reason', async () => {
+  const conn = new FakeAgentSideConnection()
+  const proc = new FakePiRpcProcess()
+  const session = makeSession(conn, proc)
+
+  const p = session.prompt('hello')
+  await session.cancel()
+  proc.emit(assistantEnd('error', 'boom'))
+  proc.emit({ type: 'agent_settled' })
+
+  assert.equal(await p, 'cancelled')
+})

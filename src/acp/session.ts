@@ -46,7 +46,7 @@ type SessionCreateParams = {
   env?: Record<string, string | undefined>
 }
 
-export type StopReason = 'end_turn' | 'cancelled' | 'error'
+export type StopReason = 'end_turn' | 'max_tokens' | 'cancelled' | 'error'
 
 type PendingTurn = {
   resolve: (reason: StopReason) => void
@@ -330,6 +330,9 @@ export class PiAcpSession {
   // Applies to the currently running turn.
   private cancelRequested = false
   private settledTurnStats: PiSessionStats | null | undefined = undefined
+  // Stop reason and error of the turn's latest assistant message. pi may retry, compact
+  // or continue after an error, so only the last one before agent_settled decides.
+  private lastAssistantStop: { stopReason?: unknown; errorMessage?: unknown } | null = null
 
   // Current in-flight turn (if any). Additional prompts are queued.
   private pendingTurn: PendingTurn | null = null
@@ -598,7 +601,7 @@ export class PiAcpSession {
     // delivered before we resolve the ACP `session/prompt` request.
     this.settledTurnStats = await this.publishContextUsage()
 
-    const reason: StopReason = this.cancelRequested ? 'cancelled' : 'end_turn'
+    const reason = this.settledStopReason()
     this.pendingTurn?.resolve(reason)
     this.pendingTurn = null
 
@@ -615,6 +618,24 @@ export class PiAcpSession {
         sessionUpdate: 'session_info_update',
         _meta: { piAcp: { queueDepth: 0, running: false } }
       })
+    }
+  }
+
+  /** Maps the turn's final pi stop reason to the ACP outcome; `error` also records lastError. */
+  private settledStopReason(): StopReason {
+    if (this.cancelRequested) return 'cancelled'
+    const final = this.lastAssistantStop
+    switch (final?.stopReason) {
+      case 'length':
+        return 'max_tokens'
+      case 'aborted':
+        return 'cancelled'
+      case 'error':
+        this.lastError =
+          typeof final.errorMessage === 'string' && final.errorMessage ? final.errorMessage : 'pi model request failed'
+        return 'error'
+      default:
+        return 'end_turn'
     }
   }
 
@@ -675,6 +696,7 @@ export class PiAcpSession {
 
   private startTurn(t: QueuedTurn): void {
     this.cancelRequested = false
+    this.lastAssistantStop = null
 
     this.pendingTurn = { resolve: t.resolve, reject: t.reject }
 
@@ -734,6 +756,14 @@ export class PiAcpSession {
     const type = String((ev as any).type ?? '')
 
     switch (type) {
+      case 'message_end': {
+        const message = ev.message as { role?: unknown; stopReason?: unknown; errorMessage?: unknown } | undefined
+        if (message?.role === 'assistant') {
+          this.lastAssistantStop = { stopReason: message.stopReason, errorMessage: message.errorMessage }
+        }
+        break
+      }
+
       case 'message_update': {
         const ame = (ev as any).assistantMessageEvent
 

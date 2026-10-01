@@ -1035,15 +1035,15 @@ export class PiAcpAgent implements ACPAgent {
     // turn settles (best effort; a slow or absent pi stats call omits the field).
     const usage = await this.collectTurnUsage(session)
 
-    // ACP StopReason does not include "error"; if pi fails we map to end_turn for now,
-    // unless we know this was a cancellation.
+    // ACP has no "error" stop reason: a failed turn (provider error, pi RPC failure,
+    // process exit) is a JSON-RPC error carrying pi's message, unless it was cancelled.
+    // Updates streamed before the failure have already reached the client.
     if (result === 'error') {
       if (session.wasCancelRequested()) return { stopReason: 'cancelled', usage }
-      return {
-        stopReason: 'end_turn',
-        usage,
-        _meta: { piAcp: { error: session.lastError ?? 'pi prompt failed (no diagnostic retained)' } }
-      }
+      throw RequestError.internalError(
+        usage ? { usage } : undefined,
+        session.lastError ?? 'pi prompt failed (no diagnostic retained)'
+      )
     }
 
     if (result === 'end_turn') {
