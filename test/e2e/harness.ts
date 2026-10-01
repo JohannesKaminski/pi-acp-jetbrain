@@ -10,6 +10,9 @@ import {
   ClientSideConnection,
   ndJsonStream,
   type Client,
+  type ClientCapabilities,
+  type CreateElicitationRequest,
+  type CreateElicitationResponse,
   type InitializeResponse,
   type LoadSessionResponse,
   type NewSessionResponse,
@@ -30,11 +33,16 @@ export type E2EOptions = {
   script: ScriptedModelScript
   /** Merged over the harness defaults in the isolated agent dir's settings.json. */
   piSettings?: Record<string, unknown>
+  /** Sent in `initialize`; defaults to none (every optional capability unsupported). */
+  clientCapabilities?: ClientCapabilities
 }
 
 export class E2EClient {
   readonly updates: SessionNotification[] = []
   readonly permissionRequests: RequestPermissionRequest[] = []
+  readonly elicitationRequests: CreateElicitationRequest[] = []
+  /** Answers each elicitation request; defaults to cancel. */
+  onElicitation: (req: CreateElicitationRequest) => CreateElicitationResponse = () => ({ action: 'cancel' })
   /** Answers each permission request; defaults to the first option. */
   onPermission: (req: RequestPermissionRequest) => RequestPermissionResponse = req => ({
     outcome: { outcome: 'selected', optionId: req.options[0]!.optionId }
@@ -53,7 +61,8 @@ export class E2EClient {
 
   private constructor(
     private readonly child: ChildProcessWithoutNullStreams,
-    private readonly root: string
+    private readonly root: string,
+    private readonly clientCapabilities: ClientCapabilities
   ) {
     this.workspace = join(root, 'workspace')
     child.stderr.setEncoding('utf8')
@@ -68,6 +77,10 @@ export class E2EClient {
       requestPermission: async params => {
         this.permissionRequests.push(params)
         return this.onPermission(params)
+      },
+      unstable_createElicitation: async params => {
+        this.elicitationRequests.push(params)
+        return this.onElicitation(params)
       }
     }
     child.stdout.on('data', (chunk: Buffer) => this.captureWire(chunk))
@@ -112,11 +125,11 @@ export class E2EClient {
         npm_config_offline: 'true'
       }
     })
-    return new E2EClient(child, root)
+    return new E2EClient(child, root, opts.clientCapabilities ?? {})
   }
 
   initialize(): Promise<InitializeResponse> {
-    return this.withStderr(this.conn.initialize({ protocolVersion: 1, clientCapabilities: {} }))
+    return this.withStderr(this.conn.initialize({ protocolVersion: 1, clientCapabilities: this.clientCapabilities }))
   }
 
   async newSession(): Promise<NewSessionResponse> {

@@ -5,7 +5,8 @@ import type {
   PermissionOption,
   SessionUpdate,
   ToolCallContent,
-  ToolCallLocation
+  ToolCallLocation,
+  ClientCapabilities
 } from '@agentclientprotocol/sdk'
 import { RequestError } from '@agentclientprotocol/sdk'
 import { readFileSync } from 'node:fs'
@@ -180,6 +181,8 @@ export class SessionManager {
   private sessions = new Map<string, PiAcpSession>()
   private readonly closing = new Map<string, { session: PiAcpSession; promise: Promise<void> }>()
   private readonly store = new SessionStore()
+  /** The client's capabilities from `initialize`; omitted ones count as unsupported. */
+  clientCapabilities: ClientCapabilities = {}
 
   /** Dispose all sessions and their underlying pi subprocesses. */
   async disposeAll(): Promise<void> {
@@ -281,7 +284,8 @@ export class SessionManager {
       proc,
       conn: params.conn,
       fileCommands: params.fileCommands ?? [],
-      bridge: params.bridge
+      bridge: params.bridge,
+      clientCapabilities: this.clientCapabilities
     })
 
     this.sessions.set(sessionId, session)
@@ -309,7 +313,8 @@ export class SessionManager {
       proc: params.proc,
       conn: params.conn,
       fileCommands: params.fileCommands ?? [],
-      bridge: params.bridge
+      bridge: params.bridge,
+      clientCapabilities: this.clientCapabilities
     })
 
     this.sessions.set(sessionId, session)
@@ -329,6 +334,7 @@ export class PiAcpSession {
   private readonly conn: AgentSideConnection
   private readonly fileCommands: FileSlashCommand[]
   private readonly bridge: AcpMcpBridge | undefined
+  private readonly clientCapabilities: ClientCapabilities
 
   // Used to map abort semantics to ACP stopReason.
   // Applies to the currently running turn.
@@ -369,6 +375,7 @@ export class PiAcpSession {
     conn: AgentSideConnection
     fileCommands?: FileSlashCommand[]
     bridge?: AcpMcpBridge
+    clientCapabilities?: ClientCapabilities
   }) {
     this.sessionId = opts.sessionId
     this.cwd = opts.cwd
@@ -377,6 +384,7 @@ export class PiAcpSession {
     this.conn = opts.conn
     this.fileCommands = opts.fileCommands ?? []
     this.bridge = opts.bridge
+    this.clientCapabilities = opts.clientCapabilities ?? {}
 
     this.proc.onEvent(ev => this.handlePiEvent(ev))
     this.proc.onExit?.((code, signal) => this.handleProcessExit(code, signal))
@@ -1186,6 +1194,11 @@ export class PiAcpSession {
     const placeholder = stringProp(ev, 'placeholder')
     const timeout = typeof ev.timeout === 'number' && ev.timeout > 0 ? ev.timeout : 300_000
 
+    if (!this.clientCapabilities.elicitation?.form) {
+      await this.cancelUnsupportedInput(id)
+      return
+    }
+
     try {
       const response = await withTimeout(
         this.conn.unstable_createElicitation({
@@ -1213,17 +1226,20 @@ export class PiAcpSession {
       }
       await this.proc.sendExtensionUiResponse({ id, value: response.content.value })
     } catch {
-      // The ACP client does not implement the UNSTABLE elicitation API (or the
-      // request failed): fall back to a visible cancellation so pi never hangs.
-      this.emit({
-        sessionUpdate: 'agent_message_chunk',
-        content: {
-          type: 'text',
-          text: 'Pi input UI request is not supported by this ACP client; cancelling it.'
-        } satisfies ContentBlock
-      })
-      await this.proc.sendExtensionUiResponse({ id, cancelled: true })
+      // The client declared form elicitation but the request failed: cancel visibly so pi never hangs.
+      await this.cancelUnsupportedInput(id)
     }
+  }
+
+  private async cancelUnsupportedInput(id: string): Promise<void> {
+    this.emit({
+      sessionUpdate: 'agent_message_chunk',
+      content: {
+        type: 'text',
+        text: 'Pi input UI request is not supported by this ACP client; cancelling it.'
+      } satisfies ContentBlock
+    })
+    await this.proc.sendExtensionUiResponse({ id, cancelled: true })
   }
 
   private async requestExtensionPermission(

@@ -1,6 +1,7 @@
 // pi extension loaded by the e2e harness. Registers pi-ai's faux provider as
 // `scripted/scripted` and answers each model request with the next entry from
-// the JSON script named by PI_ACP_E2E_SCRIPT.
+// the JSON script named by PI_ACP_E2E_SCRIPT. Also registers test-only tools that
+// exercise pi's extension UI (e.g. `ask_user` → ctx.ui.input).
 import { readFileSync } from 'node:fs'
 import {
   fauxAssistantMessage,
@@ -11,6 +12,7 @@ import {
   type FauxContentBlock
 } from '@earendil-works/pi-ai'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
+import { Type } from 'typebox'
 import type { ScriptedModelScript, ScriptedBlock } from './script.js'
 
 function toBlock(block: ScriptedBlock): FauxContentBlock {
@@ -46,4 +48,18 @@ export default function (pi: ExtensionAPI) {
   )
 
   pi.registerProvider(faux.provider)
+
+  pi.registerTool({
+    name: 'ask_user',
+    label: 'Ask user',
+    description: 'Ask the user for a line of text via the UI.',
+    parameters: Type.Object({ question: Type.String() }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const answer = await ctx.ui.input(params.question, 'type here')
+      return {
+        content: [{ type: 'text', text: answer === undefined ? 'ANSWER:<none>' : `ANSWER:${answer}` }],
+        details: undefined
+      }
+    }
+  })
 }

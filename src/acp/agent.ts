@@ -341,6 +341,7 @@ export class PiAcpAgent implements ACPAgent {
   }
 
   async initialize(params: InitializeRequest): Promise<InitializeResponse> {
+    this.sessions.clientCapabilities = params.clientCapabilities ?? {}
     // We currently only support ACP protocol version 1.
     const supportedVersion = 1
     const requested = params.protocolVersion

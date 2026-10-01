@@ -1,4 +1,5 @@
 import test from 'node:test'
+import type { ClientCapabilities } from '@agentclientprotocol/sdk'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,7 +13,8 @@ function makeSession(
   conn: FakeAgentSideConnection,
   proc: FakePiRpcProcess,
   cwd = process.cwd(),
-  fileCommands: Array<{ name: string; description: string; content: string; source: string }> = []
+  fileCommands: Array<{ name: string; description: string; content: string; source: string }> = [],
+  clientCapabilities: ClientCapabilities = {}
 ) {
   return new PiAcpSession({
     sessionId: 's1',
@@ -20,9 +22,12 @@ function makeSession(
     mcpServers: [],
     proc: proc as any,
     conn: asAgentConn(conn),
-    fileCommands
+    fileCommands,
+    clientCapabilities
   })
 }
+
+const FORM_ELICITATION: ClientCapabilities = { elicitation: { form: {} } }
 
 function assertToolCall(conn: FakeAgentSideConnection, locations: Array<{ path: string; line?: number }>) {
   assert.equal(conn.updates.length, 1)
@@ -221,7 +226,7 @@ test('PiAcpSession: routes input through elicitation and cancels editor with a v
   conn.nextElicitationResponse = { action: 'cancel' }
   const proc = new FakePiRpcProcess()
 
-  makeSession(conn, proc)
+  makeSession(conn, proc, process.cwd(), [], FORM_ELICITATION)
 
   proc.emit({ type: 'extension_ui_request', id: 'ui-3', method: 'input', title: 'Enter name' })
   proc.emit({ type: 'extension_ui_request', id: 'ui-4', method: 'editor', title: 'Edit text' })
@@ -740,7 +745,7 @@ test('PiAcpSession: handles extension input via ACP elicitation form (accept)', 
   conn.nextElicitationResponse = { action: 'accept', content: { value: 'hello from user' } }
   const proc = new FakePiRpcProcess()
 
-  makeSession(conn, proc)
+  makeSession(conn, proc, process.cwd(), [], FORM_ELICITATION)
 
   proc.emit({
     type: 'extension_ui_request',
@@ -772,7 +777,7 @@ test('PiAcpSession: handles extension input declined or cancelled by the user', 
   conn.nextElicitationResponse = { action: 'decline' }
   const proc = new FakePiRpcProcess()
 
-  makeSession(conn, proc)
+  makeSession(conn, proc, process.cwd(), [], FORM_ELICITATION)
 
   proc.emit({ type: 'extension_ui_request', id: 'ui-in-2', method: 'input', title: 'Pick a value' })
   await flush()
@@ -781,12 +786,12 @@ test('PiAcpSession: handles extension input declined or cancelled by the user', 
   assert.deepEqual(proc.extensionUiResponses, [{ id: 'ui-in-2', cancelled: true }])
 })
 
-test('PiAcpSession: falls back to a visible cancellation when the client lacks elicitation support', async () => {
+test('PiAcpSession: falls back to a visible cancellation when a declared elicitation request fails', async () => {
   const conn = new FakeAgentSideConnection()
   conn.elicitationError = new Error('method not found')
   const proc = new FakePiRpcProcess()
 
-  makeSession(conn, proc)
+  makeSession(conn, proc, process.cwd(), [], FORM_ELICITATION)
 
   proc.emit({ type: 'extension_ui_request', id: 'ui-in-3', method: 'input', title: 'Input' })
   await flush()
@@ -1069,4 +1074,18 @@ test('PiAcpSession: a client cancel wins over the final stop reason', async () =
   proc.emit({ type: 'agent_settled' })
 
   assert.equal(await p, 'cancelled')
+})
+
+test('PiAcpSession: without the elicitation capability input is cancelled without calling the client', async () => {
+  const conn = new FakeAgentSideConnection()
+  const proc = new FakePiRpcProcess()
+
+  makeSession(conn, proc)
+
+  proc.emit({ type: 'extension_ui_request', id: 'ui-in-4', method: 'input', title: 'Input' })
+  await flush()
+
+  assert.equal(conn.elicitationRequests.length, 0)
+  assert.deepEqual(proc.extensionUiResponses, [{ id: 'ui-in-4', cancelled: true }])
+  assert.match(String((conn.updates[0]!.update as any).content.text), /not supported by this ACP client/)
 })

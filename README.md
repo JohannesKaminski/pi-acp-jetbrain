@@ -33,7 +33,7 @@ When a turn settles the adapter makes one `get_session_stats` call and reports t
 
 The adapter also sends `usage_update` on `session/new` and `session/load`, and after a model switch. Right after compaction pi has no trusted token count, so the client keeps the previous value.
 
-Text input requests use the unstable ACP elicitation API when the client has it. Requests that fit permissions route through ACP permissions. An editor request shows a cancellation notice because elicitation forms hold primitive fields only.
+Text input requests use the unstable ACP elicitation API when the client declares form elicitation in `initialize`; otherwise they are cancelled with a visible notice. Requests that fit permissions route through ACP permissions. An editor request shows a cancellation notice because elicitation forms hold primitive fields only.
 
 The model selector works through a mapping from pi models to ACP provider info. Pi keeps provider credentials outside the RPC surface.
 
