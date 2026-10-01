@@ -21,7 +21,7 @@ npm package: `pi-acp-jetbrain` (see the version badge for the current release). 
 
 The adapter covers the session surface: `session/new`, `session/prompt`, `session/cancel`, `session/list`, `session/load`, `session/fork`, `session/resume`, `session/close`, `session/delete`. Pi keeps its own session files. The adapter keeps a small map at `~/.pi/pi-acp/session-map.json` so a load can reattach to the stored session.
 
-Assistant text streams as `agent_message_chunk`. Reasoning streams as `agent_thought_chunk` when the provider sends it. Tool runs map to `tool_call` and `tool_call_update` events.
+Assistant text streams as `agent_message_chunk`. Reasoning streams as `agent_thought_chunk` when the provider sends it. Every chunk carries a `messageId`: the thinking and text of one pi reply share one, and each adapter notice and replayed message gets its own. Tool runs map to `tool_call` and `tool_call_update` events.
 
 A turn ends with `max_tokens` when the model hit its output limit and `cancelled` when it was stopped. A failed turn (provider error, pi crash) returns a JSON-RPC error with pi's message. Errors pi retries on its own, and context overflows it recovers from by compacting, don't end the turn.
 

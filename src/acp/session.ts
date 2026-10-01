@@ -343,6 +343,9 @@ export class PiAcpSession {
   // Stop reason and error of the turn's latest assistant message. pi may retry, compact
   // or continue after an error, so only the last one before agent_settled decides.
   private lastAssistantStop: { stopReason?: unknown; errorMessage?: unknown } | null = null
+  // ACP messageId of the pi assistant message being streamed; its thinking and text
+  // chunks share it. Chunks outside a pi message (adapter notices) get their own id.
+  private currentMessageId: string | null = null
 
   // Current in-flight turn (if any). Additional prompts are queued.
   private pendingTurn: PendingTurn | null = null
@@ -557,6 +560,13 @@ export class PiAcpSession {
   }
 
   private emit(update: SessionUpdate): void {
+    if (
+      (update.sessionUpdate === 'agent_message_chunk' || update.sessionUpdate === 'agent_thought_chunk') &&
+      !update.messageId
+    ) {
+      update = { ...update, messageId: this.currentMessageId ?? crypto.randomUUID() }
+    }
+
     // Serialize update delivery.
     this.lastEmit = this.lastEmit
       .then(() =>
@@ -768,10 +778,17 @@ export class PiAcpSession {
     const type = String((ev as any).type ?? '')
 
     switch (type) {
+      case 'message_start': {
+        const message = ev.message as { role?: unknown } | undefined
+        if (message?.role === 'assistant') this.currentMessageId = crypto.randomUUID()
+        break
+      }
+
       case 'message_end': {
         const message = ev.message as { role?: unknown; stopReason?: unknown; errorMessage?: unknown } | undefined
         if (message?.role === 'assistant') {
           this.lastAssistantStop = { stopReason: message.stopReason, errorMessage: message.errorMessage }
+          this.currentMessageId = null
         }
         break
       }

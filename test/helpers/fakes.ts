@@ -31,8 +31,16 @@ export class FakeAgentSideConnection {
   nextElicitationResponse: unknown = { action: 'cancel' }
   elicitationError: unknown = null
 
+  /**
+   * messageId of each entry in `updates` (aligned by index). It's random, so it's split
+   * off the recorded update to keep exact-match assertions stable.
+   */
+  readonly messageIds: Array<string | undefined> = []
+
   async sessionUpdate(msg: SessionUpdateMsg): Promise<void> {
-    this.updates.push(msg)
+    const { messageId, ...update } = msg.update as SessionUpdateMsg['update'] & { messageId?: string | null }
+    this.messageIds.push(messageId ?? undefined)
+    this.updates.push({ ...msg, update: update as SessionUpdateMsg['update'] })
   }
 
   async requestPermission(

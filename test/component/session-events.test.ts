@@ -1089,3 +1089,29 @@ test('PiAcpSession: without the elicitation capability input is cancelled withou
   assert.deepEqual(proc.extensionUiResponses, [{ id: 'ui-in-4', cancelled: true }])
   assert.match(String((conn.updates[0]!.update as any).content.text), /not supported by this ACP client/)
 })
+
+test('PiAcpSession: chunks of one pi assistant message share a messageId; the next message gets a new one', async () => {
+  const conn = new FakeAgentSideConnection()
+  const proc = new FakePiRpcProcess()
+  makeSession(conn, proc)
+
+  const delta = (type: 'text_delta' | 'thinking_delta', d: string): FakePiEvent => ({
+    type: 'message_update',
+    assistantMessageEvent: { type, delta: d }
+  })
+  proc.emit({ type: 'message_start', message: { role: 'assistant' } as any })
+  proc.emit(delta('thinking_delta', 'hmm'))
+  proc.emit(delta('text_delta', 'a'))
+  proc.emit(delta('text_delta', 'b'))
+  proc.emit({ type: 'message_end', message: { role: 'assistant', stopReason: 'toolUse' } as any })
+  proc.emit({ type: 'auto_retry_start', attempt: 1, maxAttempts: 2, delayMs: 1000 })
+  proc.emit({ type: 'message_start', message: { role: 'assistant' } as any })
+  proc.emit(delta('text_delta', 'c'))
+  await flush()
+
+  const [thought, a, b, notice, c] = conn.messageIds
+  assert.equal(conn.messageIds.length, 5)
+  assert.ok(thought && thought === a && a === b, 'one message, one id')
+  assert.ok(notice && notice !== a, 'a notice outside a pi message is its own message')
+  assert.ok(c && c !== a && c !== notice, 'the next pi message gets a new id')
+})

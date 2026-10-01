@@ -17,6 +17,7 @@ import {
   type SessionInfo,
   type SetSessionConfigOptionRequest,
   type SetSessionConfigOptionResponse,
+  type SessionNotification,
   type SetSessionModeRequest,
   type SetSessionModeResponse,
   type DeleteSessionRequest,
@@ -340,6 +341,24 @@ export class PiAcpAgent implements ACPAgent {
     await this.sessions.handleIncomingMcpMessage(params, true)
   }
 
+  /**
+   * Sends a session update. Each direct send of a message chunk (slash-command output,
+   * startup info, replayed history) is a whole message, so one without a messageId gets
+   * a fresh one. Live pi chunks get theirs from the session.
+   */
+  private sendUpdate(params: SessionNotification): Promise<void> {
+    const u = params.update
+    if (
+      (u.sessionUpdate === 'agent_message_chunk' ||
+        u.sessionUpdate === 'agent_thought_chunk' ||
+        u.sessionUpdate === 'user_message_chunk') &&
+      !u.messageId
+    ) {
+      return this.conn.sessionUpdate({ ...params, update: { ...u, messageId: crypto.randomUUID() } })
+    }
+    return this.conn.sessionUpdate(params)
+  }
+
   async initialize(params: InitializeRequest): Promise<InitializeResponse> {
     this.sessions.clientCapabilities = params.clientCapabilities ?? {}
     // We currently only support ACP protocol version 1.
@@ -544,7 +563,7 @@ export class PiAcpAgent implements ACPAgent {
             includeExtensionCommands: false
           })
 
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'available_commands_update',
@@ -559,7 +578,7 @@ export class PiAcpAgent implements ACPAgent {
           // Fall back to file-based prompt templates (legacy behavior).
         }
 
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'available_commands_update',
@@ -608,7 +627,7 @@ export class PiAcpAgent implements ACPAgent {
 
         const text = headerLines.join('\n') + (summary ? `\n\n${summary}` : '')
 
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'agent_message_chunk',
@@ -643,7 +662,7 @@ export class PiAcpAgent implements ACPAgent {
         // Fallback if stats shape changes.
         const text = lines.length ? lines.join('\n') : `Session stats:\n${JSON.stringify(stats, null, 2)}`
 
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'agent_message_chunk',
@@ -657,7 +676,7 @@ export class PiAcpAgent implements ACPAgent {
       if (cmd === 'name') {
         const name = args.join(' ').trim()
         if (!name) {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -675,7 +694,7 @@ export class PiAcpAgent implements ACPAgent {
             ? ' This requires a newer pi version that supports `set_session_name` in RPC mode.'
             : ''
 
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -685,7 +704,7 @@ export class PiAcpAgent implements ACPAgent {
           return { stopReason: 'end_turn' }
         }
 
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'session_info_update',
@@ -694,7 +713,7 @@ export class PiAcpAgent implements ACPAgent {
           }
         })
 
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'agent_message_chunk',
@@ -712,7 +731,7 @@ export class PiAcpAgent implements ACPAgent {
 
         // If no arg, just report current.
         if (!modeRaw) {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -726,7 +745,7 @@ export class PiAcpAgent implements ACPAgent {
         }
 
         if (modeRaw !== 'all' && modeRaw !== 'one-at-a-time') {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -741,7 +760,7 @@ export class PiAcpAgent implements ACPAgent {
 
         await session.proc.setSteeringMode(modeRaw as 'all' | 'one-at-a-time')
 
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'agent_message_chunk',
@@ -759,7 +778,7 @@ export class PiAcpAgent implements ACPAgent {
 
         // If no arg, just report current.
         if (!modeRaw) {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -773,7 +792,7 @@ export class PiAcpAgent implements ACPAgent {
         }
 
         if (modeRaw !== 'all' && modeRaw !== 'one-at-a-time') {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -788,7 +807,7 @@ export class PiAcpAgent implements ACPAgent {
 
         await session.proc.setFollowUpMode(modeRaw as 'all' | 'one-at-a-time')
 
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'agent_message_chunk',
@@ -841,7 +860,7 @@ export class PiAcpAgent implements ACPAgent {
 
         const changelogPath = findChangelog()
         if (!changelogPath) {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -855,7 +874,7 @@ export class PiAcpAgent implements ACPAgent {
         try {
           text = readFileSync(changelogPath, 'utf-8')
         } catch (e: unknown) {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -869,7 +888,7 @@ export class PiAcpAgent implements ACPAgent {
         const maxChars = 20_000
         if (text.length > maxChars) text = text.slice(0, maxChars) + '\n\n...(truncated)...'
 
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'agent_message_chunk',
@@ -890,7 +909,7 @@ export class PiAcpAgent implements ACPAgent {
         const messageCount = typeof state?.messageCount === 'number' ? state.messageCount : 0
 
         if (!sessionFile || messageCount === 0 || !existsSync(sessionFile)) {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -906,7 +925,7 @@ export class PiAcpAgent implements ACPAgent {
         try {
           const raw = readFileSync(sessionFile, 'utf-8')
           if (raw.trim().length === 0) {
-            await this.conn.sessionUpdate({
+            await this.sendUpdate({
               sessionId: session.sessionId,
               update: {
                 sessionUpdate: 'agent_message_chunk',
@@ -919,7 +938,7 @@ export class PiAcpAgent implements ACPAgent {
             return { stopReason: 'end_turn' }
           }
         } catch {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -940,7 +959,7 @@ export class PiAcpAgent implements ACPAgent {
           const result = await session.proc.exportHtml(outputPath)
           resultPath = result.path
         } catch (e: unknown) {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -954,7 +973,7 @@ export class PiAcpAgent implements ACPAgent {
         }
 
         if (!resultPath) {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -971,7 +990,7 @@ export class PiAcpAgent implements ACPAgent {
 
         // Emit a short prefix + a resource link. Many clients concatenate chunks into a single
         // assistant message, so this avoids the "link + duplicate plain text" look.
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'agent_message_chunk',
@@ -982,7 +1001,7 @@ export class PiAcpAgent implements ACPAgent {
           }
         })
 
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'agent_message_chunk',
@@ -1014,7 +1033,7 @@ export class PiAcpAgent implements ACPAgent {
 
         await session.proc.setAutoCompaction(enabled)
 
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'agent_message_chunk',
@@ -1083,7 +1102,7 @@ export class PiAcpAgent implements ACPAgent {
       })
       const summary = inspectionSummary(outcome)
       if (summary) {
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: summary } }
         })
@@ -1121,7 +1140,7 @@ export class PiAcpAgent implements ACPAgent {
       const summary = `Mutation provenance: ${violations.length} file(s) changed outside IntelliJ (${violations.join(
         ', '
       )}). Re-apply them with ide_idea_apply_patch / ide_idea_create_new_file so the IDE owns mutations.`
-      await this.conn.sessionUpdate({
+      await this.sendUpdate({
         sessionId: session.sessionId,
         update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: summary } }
       })
@@ -1430,7 +1449,7 @@ export class PiAcpAgent implements ACPAgent {
       if (role === 'user') {
         const text = normalizePiMessageText(m?.content)
         if (text) {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'user_message_chunk',
@@ -1443,7 +1462,7 @@ export class PiAcpAgent implements ACPAgent {
       if (role === 'assistant') {
         const text = normalizePiAssistantText(m?.content)
         if (text) {
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -1462,7 +1481,7 @@ export class PiAcpAgent implements ACPAgent {
 
         if (isBash) {
           const text = bashResultText(m)
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'tool_call',
@@ -1476,7 +1495,7 @@ export class PiAcpAgent implements ACPAgent {
             }
           })
 
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'tool_call_update',
@@ -1492,7 +1511,7 @@ export class PiAcpAgent implements ACPAgent {
         }
 
         // Create a synthetic ACP tool call to render historic tool usage.
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'tool_call',
@@ -1507,7 +1526,7 @@ export class PiAcpAgent implements ACPAgent {
         })
 
         const text = toolResultToText(m)
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'tool_call_update',
@@ -1561,7 +1580,7 @@ export class PiAcpAgent implements ACPAgent {
             includeExtensionCommands: false
           })
 
-          await this.conn.sessionUpdate({
+          await this.sendUpdate({
             sessionId: session.sessionId,
             update: {
               sessionUpdate: 'available_commands_update',
@@ -1576,7 +1595,7 @@ export class PiAcpAgent implements ACPAgent {
           // fall back
         }
 
-        await this.conn.sessionUpdate({
+        await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'available_commands_update',
