@@ -43,8 +43,9 @@ const runtime = files.filter(f => RUNTIME_RE.test(f))
 if (runtime.length) fail(`tracked runtime state: ${runtime.join(', ')}`)
 
 // 4. Documented counts must match the tree (README is the release surface).
-if (!existsSync(join(root, '.pi'))) {
-  console.log('[skip] README count checks; .pi is not in this checkout')
+// Key on the tooling, not on `.pi` (the adapter's IDE inspections create `.pi/work`).
+if (!existsSync(join(root, '.pi', 'prompts'))) {
+  console.log('[skip] README count checks; .pi/prompts is not in this checkout')
   process.exit(0)
 }
 const prompts = readdirSync(join(root, '.pi', 'prompts')).filter(n => n.endsWith('.md')).length
