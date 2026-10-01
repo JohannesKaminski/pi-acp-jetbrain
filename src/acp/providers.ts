@@ -25,7 +25,7 @@ export function piModelsToProviderInfo(models: Array<Record<string, unknown>>): 
     const baseUrl = typeof model?.baseUrl === 'string' ? model.baseUrl : ''
 
     byProvider.set(provider, {
-      id: provider,
+      providerId: provider,
       supported: [apiType],
       required: false,
       current: { apiType, baseUrl }

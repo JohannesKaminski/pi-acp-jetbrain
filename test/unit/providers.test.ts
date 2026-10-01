@@ -11,13 +11,13 @@ test('piModelsToProviderInfo: groups models by provider with best-effort routing
 
   assert.deepEqual(providers, [
     {
-      id: 'openai',
+      providerId: 'openai',
       supported: ['openai'],
       required: false,
       current: { apiType: 'openai', baseUrl: 'https://api.openai.com/v1' }
     },
     {
-      id: 'anthropic',
+      providerId: 'anthropic',
       supported: ['anthropic'],
       required: false,
       current: { apiType: 'anthropic', baseUrl: '' }
@@ -33,6 +33,6 @@ test('piModelsToProviderInfo: falls back to _prefixed custom protocol and skips 
   ])
 
   assert.equal(providers.length, 1)
-  assert.equal(providers[0]!.id, 'my-custom')
+  assert.equal(providers[0]!.providerId, 'my-custom')
   assert.deepEqual(providers[0]!.supported, ['_my-custom'])
 })

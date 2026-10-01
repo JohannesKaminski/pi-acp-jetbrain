@@ -78,15 +78,6 @@ export function toolTitle(toolName: string, args: unknown, cwd: string): string 
   return toolName
 }
 
-/**
- * ACP tool-call `name` (stabilized 2026-09-17): the programmatic tool name, sent on the
- * first report only. SDK 0.26's types predate the field, so it's spread in untyped;
- * the SDK forwards it unchanged. Type it properly once the SDK is upgraded.
- */
-export function toolCallName(toolName: string): Record<string, never> {
-  return { name: toolName } as unknown as Record<string, never>
-}
-
 /** Paths inside the session cwd are shown relative to it; others stay as given. */
 function displayPath(path: string, cwd: string): string {
   if (!isAbsolute(path)) return path

@@ -71,6 +71,14 @@ function isAcpServer(server: McpServer): server is McpServerAcp & { type: 'acp' 
   return (server as { type?: string }).type === 'acp'
 }
 
+/**
+ * ACP MCP server id. ACP SDK 1.x names it `serverId`; earlier hosts (IntelliJ builds on the
+ * pre-1.0 protocol) send `id`. Accept both so the bridge works with either.
+ */
+function acpServerId(server: McpServerAcp): string {
+  return (server as { serverId?: string }).serverId ?? (server as { id?: string }).id ?? ''
+}
+
 function isStdioServer(server: McpServer): server is McpServerStdio {
   const candidate = server as Partial<McpServerStdio>
   return typeof candidate.command === 'string' && Array.isArray(candidate.args) && Array.isArray(candidate.env)
@@ -430,7 +438,7 @@ export class AcpMcpBridge {
         if (isAcpServer(server)) {
           const response = (await this.#withTimeout(
             `mcp/connect ${server.name}`,
-            this.#conn.extMethod('mcp/connect', { acpId: server.id }),
+            this.#conn.extMethod('mcp/connect', { acpId: acpServerId(server) }),
             this.#discoveryTimeoutMs
           )) as { connectionId?: string }
           connectionId = response?.connectionId
@@ -440,7 +448,12 @@ export class AcpMcpBridge {
             continue
           }
 
-          this.#connections.set(server.id, { acpId: server.id, serverName: server.name, connectionId, state: 'ready' })
+          this.#connections.set(acpServerId(server), {
+            acpId: acpServerId(server),
+            serverName: server.name,
+            connectionId,
+            state: 'ready'
+          })
           phase = 'initialize'
           await this.#withTimeout(
             `initialize ${server.name}`,
@@ -582,7 +595,7 @@ export class AcpMcpBridge {
           await stdioClient.close()
         }
         if (isAcpServer(server) && connectionId) {
-          this.#connections.delete(server.id)
+          this.#connections.delete(acpServerId(server))
           try {
             await this.#conn.extMethod('mcp/disconnect', { connectionId })
           } catch {

@@ -32,7 +32,7 @@ test('e2e: tool calls carry name, kind and a readable title for each pi built-in
     const res = await c.prompt(sessionId, 'look around')
     assert.equal(res.stopReason, 'end_turn')
 
-    // Wire updates: the SDK 0.26 client would strip the newer `name` field.
+    // Raw wire updates: what any client receives, whatever its SDK version.
     const toolCalls = () => c.wireUpdatesOf('tool_call').map(u => ({ name: u.name, kind: u.kind, title: u.title }))
     const live = toolCalls()
     assert.deepEqual(live, [

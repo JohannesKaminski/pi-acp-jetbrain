@@ -33,7 +33,7 @@ import {
   isBashTool
 } from './translate/bash.js'
 import { toolResultToText } from './translate/pi-tools.js'
-import { toolCallName, toolKind, toolTitle } from './translate/tool-call.js'
+import { toolKind, toolTitle } from './translate/tool-call.js'
 import { withTimeout } from './usage.js'
 
 type SessionCreateParams = {
@@ -674,7 +674,7 @@ export class PiAcpSession {
     this.emit({
       sessionUpdate: params.sessionUpdate,
       toolCallId: params.toolCallId,
-      ...(params.sessionUpdate === 'tool_call' ? toolCallName(params.toolName) : {}),
+      ...(params.sessionUpdate === 'tool_call' ? { name: params.toolName } : {}),
       title: toolTitle(params.toolName, params.args, this.cwd),
       kind: 'execute',
       status: params.status,
@@ -860,7 +860,7 @@ export class PiAcpSession {
               this.emit({
                 sessionUpdate: 'tool_call',
                 toolCallId,
-                ...toolCallName(toolName),
+                name: toolName,
                 title: toolTitle(toolName, rawInput, this.cwd),
                 kind: toolKind(toolName),
                 status,
@@ -944,7 +944,7 @@ export class PiAcpSession {
           this.emit({
             sessionUpdate: 'tool_call',
             toolCallId,
-            ...toolCallName(toolName),
+            name: toolName,
             title: toolTitle(toolName, args, this.cwd),
             kind: toolKind(toolName),
             status: 'in_progress',
@@ -1218,7 +1218,7 @@ export class PiAcpSession {
 
     try {
       const response = await withTimeout(
-        this.conn.unstable_createElicitation({
+        this.conn.createElicitation({
           mode: 'form',
           sessionId: this.sessionId,
           message: title,
@@ -1237,11 +1237,15 @@ export class PiAcpSession {
         timeout
       )
 
-      if (response.action !== 'accept' || typeof response.content?.value !== 'string') {
+      const value =
+        response.action === 'accept'
+          ? (response.content as Record<string, unknown> | null | undefined)?.value
+          : undefined
+      if (typeof value !== 'string') {
         await this.proc.sendExtensionUiResponse({ id, cancelled: true })
         return
       }
-      await this.proc.sendExtensionUiResponse({ id, value: response.content.value })
+      await this.proc.sendExtensionUiResponse({ id, value })
     } catch {
       // The client declared form elicitation but the request failed: cancel visibly so pi never hangs.
       await this.cancelUnsupportedInput(id)

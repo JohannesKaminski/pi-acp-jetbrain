@@ -45,7 +45,7 @@ import { normalizePiAssistantText, normalizePiMessageText } from './translate/pi
 import { sessionStatsToAcpUsage } from './usage.js'
 import { piModelsToProviderInfo } from './providers.js'
 import { toolResultToText } from './translate/pi-tools.js'
-import { toolCallName, toolKind, toolTitle } from './translate/tool-call.js'
+import { toolKind, toolTitle } from './translate/tool-call.js'
 import {
   bashCommand,
   bashExitCode,
@@ -1486,7 +1486,7 @@ export class PiAcpAgent implements ACPAgent {
             update: {
               sessionUpdate: 'tool_call',
               toolCallId,
-              ...toolCallName(toolName),
+              name: toolName,
               title: args ? toolTitle(toolName, args, params.cwd) : (bashCommand(m) ?? toolName),
               kind: 'execute',
               status: 'completed',
@@ -1516,7 +1516,7 @@ export class PiAcpAgent implements ACPAgent {
           update: {
             sessionUpdate: 'tool_call',
             toolCallId,
-            ...toolCallName(toolName),
+            name: toolName,
             title: toolTitle(toolName, args, params.cwd),
             kind: toolKind(toolName),
             status: 'completed',

@@ -50,7 +50,7 @@ export class FakeAgentSideConnection {
     return this.nextPermissionResponse
   }
 
-  async unstable_createElicitation(params: unknown): Promise<unknown> {
+  async createElicitation(params: unknown): Promise<unknown> {
     this.elicitationRequests.push(params)
     if (this.elicitationError !== null) throw this.elicitationError
     return this.nextElicitationResponse

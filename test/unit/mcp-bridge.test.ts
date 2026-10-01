@@ -241,6 +241,21 @@ describe('AcpMcpBridge', () => {
     await bridge.dispose()
   })
 
+  it('accepts the ACP SDK 1.x serverId descriptor as well as the legacy id', async () => {
+    for (const server of [
+      { type: 'acp', serverId: 'srv-new', name: 'IntelliJ' },
+      { type: 'acp', id: 'srv-old', name: 'IntelliJ' }
+    ]) {
+      const conn = new FakeConn()
+      const bridge = new AcpMcpBridge(conn as any, [server as any], 'paged')
+      await bridge.start()
+      const connect = conn.calls.find(call => call.method === 'mcp/connect')
+      assert.equal(connect?.params?.acpId, (server as any).serverId ?? (server as any).id)
+      assert.ok(bridge.tools.length > 0)
+      await bridge.dispose()
+    }
+  })
+
   it('stops on a repeated pagination cursor and marks the catalog incomplete', async () => {
     const conn = new FakeConn()
     const original = conn.extMethod.bind(conn)

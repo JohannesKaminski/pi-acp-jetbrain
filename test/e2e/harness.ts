@@ -50,8 +50,8 @@ export class E2EClient {
 
   /**
    * session/update params exactly as the adapter wrote them. The SDK client validates
-   * incoming updates against its own schema and drops fields it doesn't know (e.g. the
-   * tool-call `name` on SDK 0.26), so assert on these for what real clients receive.
+   * incoming updates against its own schema and drops fields it doesn't know, so assert
+   * on these for what real clients (possibly on older SDKs) receive.
    */
   readonly wireUpdates: SessionNotification[] = []
   readonly conn: ClientSideConnection
@@ -78,7 +78,7 @@ export class E2EClient {
         this.permissionRequests.push(params)
         return this.onPermission(params)
       },
-      unstable_createElicitation: async params => {
+      createElicitation: async params => {
         this.elicitationRequests.push(params)
         return this.onElicitation(params)
       }
