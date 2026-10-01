@@ -1,5 +1,6 @@
 import { AgentSideConnection, ndJsonStream } from '@agentclientprotocol/sdk'
 import { PiAcpAgent } from './acp/agent.js'
+import { createAcpDebugLog, lineTap } from './acp/debug-log.js'
 import { exitOnCrash } from './exit-on-crash.js'
 import { getPiCommand, shouldUseShellForPiCommand } from './pi-rpc/command.js'
 // Terminal Auth entrypoint. The ACP client launches the agent with `--terminal-login`.
@@ -22,8 +23,15 @@ if (process.argv.includes('--terminal-login')) {
   process.exit(typeof res.status === 'number' ? res.status : 1)
 }
 
+// Opt-in ACP traffic log (PI_ACP_DEBUG_ACP); see src/acp/debug-log.ts.
+const debugLog = createAcpDebugLog(process.env.PI_ACP_DEBUG_ACP)
+const tapOutgoing = debugLog ? lineTap(line => debugLog.outgoing(line)) : null
+const tapIncoming = debugLog ? lineTap(line => debugLog.incoming(line)) : null
+
+// Agent → client (stdout).
 const input = new WritableStream<Uint8Array>({
   write(chunk) {
+    tapOutgoing?.(chunk)
     return new Promise<void>(resolve => {
       if ((process.stdout as any).destroyed || !process.stdout.writable) return resolve()
 
@@ -40,9 +48,13 @@ const input = new WritableStream<Uint8Array>({
   }
 })
 
+// Client → agent (stdin).
 const output = new ReadableStream<Uint8Array>({
   start(controller) {
-    process.stdin.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)))
+    process.stdin.on('data', (chunk: Buffer) => {
+      tapIncoming?.(chunk)
+      controller.enqueue(new Uint8Array(chunk))
+    })
     process.stdin.on('end', () => controller.close())
     process.stdin.on('error', err => controller.error(err))
   }

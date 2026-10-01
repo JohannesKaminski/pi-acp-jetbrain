@@ -35,6 +35,8 @@ export type E2EOptions = {
   piSettings?: Record<string, unknown>
   /** Sent in `initialize`; defaults to none (every optional capability unsupported). */
   clientCapabilities?: ClientCapabilities
+  /** Extra environment for the adapter process. */
+  env?: Record<string, string>
 }
 
 export class E2EClient {
@@ -122,7 +124,8 @@ export class E2EClient {
         PI_ACP_PI_COMMAND: PI_BIN,
         PI_ACP_E2E_SCRIPT: scriptPath,
         // The adapter's update notice runs `npm view`; fail it fast instead of hitting the network.
-        npm_config_offline: 'true'
+        npm_config_offline: 'true',
+        ...opts.env
       }
     })
     return new E2EClient(child, root, opts.clientCapabilities ?? {})
