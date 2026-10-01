@@ -135,11 +135,11 @@ so the `.iml` exclusions and project dictionary load, then re-run Whole Project
 
 ## Next steps
 
-- Verify the IDE bridge after the ACP SDK 1.6 upgrade (open risk below): in a fresh IntelliJ chat, IDE tools must still appear and work.
+- Confirm one `ide_*` tool call in IntelliJ on the SDK 1.6 build (discovery already verified; open risk below).
 - Start a fresh IntelliJ chat after the next dist rebuild and complete the F-033 checklist (new PID, build revision match, cancel/restore/shutdown).
 - Add Windows CI coverage (check.yml currently runs Linux only; Windows paths and named-pipe logic stay untested).
 
-## 2026-10-01 open risk: IDE bridge after ACP SDK 1.6 (unverified)
+## 2026-10-01 open risk: IDE bridge after ACP SDK 1.6 (discovery verified, tool call pending)
 
 `fe95ac8` upgraded `@agentclientprotocol/sdk` 0.26 → 1.6. SDK 1.x redesigned the
 experimental MCP-over-ACP protocol: no `mcp/connect`, stateless `mcp/message`
@@ -155,6 +155,9 @@ protocol the installed IntelliJ build speaks is untested.
   `PI_ACP_DEBUG_BRIDGE=1` captures the descriptor (`serverId` vs `id`).
 - Fix if broken: add the stateless protocol to the bridge, keeping the old path
   for older IntelliJ builds.
+- 2026-10-01: verified in IntelliJ on the SDK 1.6 build: IDE tool discovery works
+  (the connect/connection-ID protocol is still accepted). One `ide_*` tool call
+  remains to confirm.
 
 ## F-036: nested-pi IPC guard (fixed)
 
