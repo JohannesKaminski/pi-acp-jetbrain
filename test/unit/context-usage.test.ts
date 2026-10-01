@@ -224,7 +224,7 @@ test('PiAcpAgent: a settled turn fetches session stats once for usage_update and
   assert.deepEqual(usage, { totalTokens: 15, inputTokens: 10, outputTokens: 5, _meta: { piAcp: { cost: 0.5 } } })
   assert.deepEqual(
     conn.updates.filter(u => u.update.sessionUpdate === 'usage_update').map(u => u.update),
-    [{ sessionUpdate: 'usage_update', used: 300, size: 100_000 }]
+    [{ sessionUpdate: 'usage_update', used: 300, size: 100_000, cost: { amount: 0.5, currency: 'USD' } }]
   )
 })
 
@@ -239,4 +239,25 @@ test('PiAcpAgent: a turn that ends without settling fetches session stats for pr
 
   assert.equal(proc.getSessionStatsCount, 1)
   assert.deepEqual(usage, { totalTokens: 3, inputTokens: 1, outputTokens: 2 })
+})
+
+test('PiAcpSession: usage_update includes cost only when pi reports a usable amount', async () => {
+  const cases: Array<{ cost: unknown; expected: unknown }> = [
+    { cost: 1.25, expected: { amount: 1.25, currency: 'USD' } },
+    { cost: 0, expected: { amount: 0, currency: 'USD' } },
+    { cost: undefined, expected: undefined },
+    { cost: -1, expected: undefined },
+    { cost: Number.NaN, expected: undefined },
+    { cost: '3', expected: undefined }
+  ]
+  for (const { cost, expected } of cases) {
+    const conn = new FakeAgentSideConnection()
+    const proc = new FakePiRpcProcess()
+    proc.sessionStats = { cost, contextUsage: { tokens: 10, contextWindow: 100 } } as any
+
+    await makeSession(proc, conn).publishContextUsage()
+
+    const update = conn.updates[0]?.update as { cost?: unknown } | undefined
+    assert.deepEqual(update?.cost, expected, `cost ${String(cost)}`)
+  }
 })
