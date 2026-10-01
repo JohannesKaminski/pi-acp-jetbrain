@@ -23,7 +23,7 @@ The adapter covers the session surface: `session/new`, `session/prompt`, `sessio
 
 Assistant text streams as `agent_message_chunk`. Reasoning streams as `agent_thought_chunk` when the provider sends it. Every chunk carries a `messageId`: the thinking and text of one pi reply share one, and each adapter notice and replayed message gets its own. Tool runs map to `tool_call` and `tool_call_update` events.
 
-A turn ends with `max_tokens` when the model hit its output limit and `cancelled` when it was stopped. A failed turn (provider error, pi crash) returns a JSON-RPC error with pi's message, and also writes "Request failed: …" into the chat so the failure stays visible after a reload. Errors pi retries on its own, and context overflows it recovers from by compacting, don't end the turn.
+A turn ends with `max_tokens` when the model hit its output limit and `cancelled` when it was stopped. A failed turn (provider error, pi crash) returns a JSON-RPC error with pi's message. Errors pi retries on its own, and context overflows it recovers from by compacting, don't end the turn.
 
 Edit events carry a file location when pi reports a path. The adapter resolves relative paths against the session working directory. For text edits it finds the changed line from one unique match and reports a structured diff.
 
