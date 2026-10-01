@@ -614,7 +614,21 @@ export class PiAcpAgent implements ACPAgent {
 
       if (cmd === 'compact') {
         const customInstructions = args.join(' ').trim() || undefined
-        const res = await session.proc.compact(customInstructions)
+        let res: unknown
+        try {
+          res = await session.proc.compact(customInstructions)
+        } catch (err) {
+          // A session too small to compact is a normal answer, not a failure.
+          if (!/nothing to compact/i.test(String((err as Error)?.message ?? err))) throw err
+          await this.sendUpdate({
+            sessionId: session.sessionId,
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Nothing to compact yet; the session is too small.' }
+            }
+          })
+          return { stopReason: 'end_turn' }
+        }
 
         const r: Record<string, unknown> | null =
           res && typeof res === 'object' ? (res as Record<string, unknown>) : null

@@ -37,3 +37,16 @@ test('e2e: automatic overflow compaction is announced and the turn retries', asy
     await c.close()
   }
 })
+
+test('e2e: /compact on a session too small to compact answers in the chat instead of failing', async () => {
+  const c = E2EClient.start({ script: { responses: [] } })
+  try {
+    const { sessionId } = await c.newSession()
+    const res = await c.prompt(sessionId, '/compact')
+
+    assert.equal(res.stopReason, 'end_turn')
+    assert.match(c.agentText(), /Nothing to compact yet; the session is too small\./)
+  } finally {
+    await c.close()
+  }
+})
