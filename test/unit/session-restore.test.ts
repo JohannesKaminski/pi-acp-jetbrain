@@ -135,7 +135,10 @@ test('PiAcpAgent: setSessionConfigOption auto-restores via pi session discovery 
   const sessions = new FakeSessions((sessionId, params) => ({
     sessionId,
     cwd: params.cwd,
-    proc: params.proc
+    proc: params.proc,
+    async publishContextUsage() {
+      // Context usage publishing is covered in test/unit/context-usage.test.ts.
+    }
   }))
 
   const originalSpawn = PiRpcProcess.spawn
@@ -143,6 +146,7 @@ test('PiAcpAgent: setSessionConfigOption auto-restores via pi session discovery 
     spawnCalls.push(params)
     return {
       onEvent: () => () => {},
+      getAvailableThinkingLevels: async () => ['medium'],
       getAvailableModels: async () => ({
         models: [
           { provider: 'test', id: 'alpha', name: 'Alpha' },
@@ -199,6 +203,7 @@ test('PiAcpAgent: setSessionConfigOption auto-restores via pi session discovery 
       }
     ])
     assert.deepEqual(conn.updates, [
+      { sessionId: 'fallback-session', update: { sessionUpdate: 'current_mode_update', currentModeId: 'medium' } },
       {
         sessionId: 'fallback-session',
         update: {

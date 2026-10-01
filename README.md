@@ -29,6 +29,8 @@ Each session starts with a pi startup block. Set `quietStartup: true` in pi sett
 
 After each settled turn the adapter reports token use and cost from pi session statistics. It sends the data on the unstable `usage` field.
 
+The adapter also reports context window occupancy from pi `contextUsage` as ACP `usage_update`. It sends one after each turn, on `session/new` and `session/load`, and after a model switch. Right after compaction pi has no trusted token count, so the client keeps the previous value.
+
 Text input requests use the unstable ACP elicitation API when the client has it. Requests that fit permissions route through ACP permissions. An editor request shows a cancellation notice because elicitation forms hold primitive fields only.
 
 The model selector works through a mapping from pi models to ACP provider info. Pi keeps provider credentials outside the RPC surface.
@@ -49,7 +51,7 @@ The session catalog never changes. After you edit IntelliJ MCP settings or the a
 
 ## Install
 
-Node.js 20 or newer. The pi executable on your PATH.
+Node.js 20 or newer. The pi executable (v0.81.0 or newer) on your PATH.
 
 Install it as a Pi package to activate the bundled bridge extension:
 

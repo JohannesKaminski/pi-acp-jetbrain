@@ -68,8 +68,13 @@ test('PiAcpAgent: unstable_forkSession loads the source session and forks at the
         forkCalls.push(entryId)
         return { text: 'Forked', cancelled: false }
       },
-      getState: async () => ({ sessionId: 'forked-pi-id', sessionFile: '/tmp/pi-acp-fork/branched.jsonl' }),
-      getAvailableModels: async () => ({ models: [{ provider: 'openai', id: 'gpt-4o' }] })
+      getState: async () => ({
+        sessionId: 'forked-pi-id',
+        sessionFile: '/tmp/pi-acp-fork/branched.jsonl',
+        thinkingLevel: 'medium'
+      }),
+      getAvailableModels: async () => ({ models: [{ provider: 'openai', id: 'gpt-4o' }] }),
+      getAvailableThinkingLevels: async () => ['off', 'medium']
     }
   }
 
@@ -186,8 +191,9 @@ test('PiAcpAgent: resumeSession restores the stored session and returns modes/co
     spawned.push(params)
     return {
       onEvent: () => () => {},
-      getState: async () => ({}),
-      getAvailableModels: async () => ({ models: [{ provider: 'openai', id: 'gpt-4o' }] })
+      getState: async () => ({ thinkingLevel: 'medium' }),
+      getAvailableModels: async () => ({ models: [{ provider: 'openai', id: 'gpt-4o' }] }),
+      getAvailableThinkingLevels: async () => ['off', 'medium']
     }
   }
 
