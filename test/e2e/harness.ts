@@ -11,6 +11,7 @@ import {
   ndJsonStream,
   type Client,
   type InitializeResponse,
+  type LoadSessionResponse,
   type NewSessionResponse,
   type PromptResponse,
   type RequestPermissionRequest,
@@ -39,9 +40,16 @@ export class E2EClient {
     outcome: { outcome: 'selected', optionId: req.options[0]!.optionId }
   })
 
+  /**
+   * session/update params exactly as the adapter wrote them. The SDK client validates
+   * incoming updates against its own schema and drops fields it doesn't know (e.g. the
+   * tool-call `name` on SDK 0.26), so assert on these for what real clients receive.
+   */
+  readonly wireUpdates: SessionNotification[] = []
   readonly conn: ClientSideConnection
   readonly workspace: string
   private stderr = ''
+  private stdoutBuffer = ''
 
   private constructor(
     private readonly child: ChildProcessWithoutNullStreams,
@@ -62,6 +70,7 @@ export class E2EClient {
         return this.onPermission(params)
       }
     }
+    child.stdout.on('data', (chunk: Buffer) => this.captureWire(chunk))
     const stream = ndJsonStream(
       Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
       Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>
@@ -122,6 +131,10 @@ export class E2EClient {
     return res
   }
 
+  loadSession(sessionId: string): Promise<LoadSessionResponse> {
+    return this.withStderr(this.conn.loadSession({ sessionId, cwd: this.workspace, mcpServers: [] }))
+  }
+
   prompt(sessionId: string, text: string): Promise<PromptResponse> {
     return this.withStderr(this.conn.prompt({ sessionId, prompt: [{ type: 'text', text }] }))
   }
@@ -134,6 +147,27 @@ export class E2EClient {
       const detail = err instanceof Error ? err.message : JSON.stringify(err)
       throw new Error(`${detail}\n--- adapter stderr ---\n${this.stderrTail()}`, { cause: err })
     }
+  }
+
+  private captureWire(chunk: Buffer): void {
+    this.stdoutBuffer += chunk.toString('utf8')
+    const lines = this.stdoutBuffer.split('\n')
+    this.stdoutBuffer = lines.pop() ?? ''
+    for (const line of lines) {
+      try {
+        const msg = JSON.parse(line) as { method?: string; params?: SessionNotification }
+        if (msg.method === 'session/update' && msg.params) this.wireUpdates.push(msg.params)
+      } catch {
+        // not JSON-RPC; ignore
+      }
+    }
+  }
+
+  /** Raw wire session updates of one kind, in arrival order, with all fields the adapter sent. */
+  wireUpdatesOf(kind: SessionUpdate['sessionUpdate']): Array<Record<string, unknown>> {
+    return this.wireUpdates
+      .map(n => n.update as unknown as Record<string, unknown>)
+      .filter(u => u.sessionUpdate === kind)
   }
 
   /** Session updates of one kind, in arrival order. */

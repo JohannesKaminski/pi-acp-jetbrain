@@ -5,8 +5,7 @@ import type {
   PermissionOption,
   SessionUpdate,
   ToolCallContent,
-  ToolCallLocation,
-  ToolKind
+  ToolCallLocation
 } from '@agentclientprotocol/sdk'
 import { RequestError } from '@agentclientprotocol/sdk'
 import { readFileSync } from 'node:fs'
@@ -23,7 +22,6 @@ import { SessionStore } from './session-store.js'
 import { AcpMcpBridge } from './mcp-bridge.js'
 import { expandSlashCommand, type FileSlashCommand } from './slash-commands.js'
 import {
-  bashCommand,
   bashExitCode,
   bashOutputDelta,
   bashResultText,
@@ -34,6 +32,7 @@ import {
   isBashTool
 } from './translate/bash.js'
 import { toolResultToText } from './translate/pi-tools.js'
+import { toolCallName, toolKind, toolTitle } from './translate/tool-call.js'
 import { withTimeout } from './usage.js'
 
 type SessionCreateParams = {
@@ -632,7 +631,8 @@ export class PiAcpSession {
     this.emit({
       sessionUpdate: params.sessionUpdate,
       toolCallId: params.toolCallId,
-      title: bashCommand(params.args) ?? params.toolName,
+      ...(params.sessionUpdate === 'tool_call' ? toolCallName(params.toolName) : {}),
+      title: toolTitle(params.toolName, params.args, this.cwd),
       kind: 'execute',
       status: params.status,
       locations: params.locations,
@@ -801,8 +801,9 @@ export class PiAcpSession {
               this.emit({
                 sessionUpdate: 'tool_call',
                 toolCallId,
-                title: toolName,
-                kind: toToolKind(toolName),
+                ...toolCallName(toolName),
+                title: toolTitle(toolName, rawInput, this.cwd),
+                kind: toolKind(toolName),
                 status,
                 locations,
                 rawInput
@@ -814,6 +815,7 @@ export class PiAcpSession {
                 sessionUpdate: 'tool_call_update',
                 toolCallId,
                 status,
+                title: toolTitle(toolName, rawInput, this.cwd),
                 locations,
                 rawInput
               })
@@ -883,18 +885,21 @@ export class PiAcpSession {
           this.emit({
             sessionUpdate: 'tool_call',
             toolCallId,
-            title: toolName,
-            kind: toToolKind(toolName),
+            ...toolCallName(toolName),
+            title: toolTitle(toolName, args, this.cwd),
+            kind: toolKind(toolName),
             status: 'in_progress',
             locations,
             rawInput: args
           })
         } else {
+          // Arguments are complete now; refresh the title built from streamed partial args.
           this.currentToolCalls.set(toolCallId, 'in_progress')
           this.emit({
             sessionUpdate: 'tool_call_update',
             toolCallId,
             status: 'in_progress',
+            title: toolTitle(toolName, args, this.cwd),
             locations,
             rawInput: args
           })
@@ -1275,18 +1280,4 @@ function formatAutoRetryMessage(ev: PiRpcEvent): string {
   if (delayMs > 0 && delaySeconds === 0) delaySeconds = 1
 
   return `Retrying (attempt ${attempt}/${maxAttempts}, waiting ${delaySeconds}s)...`
-}
-
-function toToolKind(toolName: string): ToolKind {
-  switch (toolName) {
-    case 'read':
-      return 'read'
-    case 'write':
-    case 'edit':
-      return 'edit'
-    case 'bash':
-      return 'execute'
-    default:
-      return 'other'
-  }
 }

@@ -44,6 +44,7 @@ import { normalizePiAssistantText, normalizePiMessageText } from './translate/pi
 import { sessionStatsToAcpUsage } from './usage.js'
 import { piModelsToProviderInfo } from './providers.js'
 import { toolResultToText } from './translate/pi-tools.js'
+import { toolCallName, toolKind, toolTitle } from './translate/tool-call.js'
 import {
   bashCommand,
   bashExitCode,
@@ -1413,9 +1414,17 @@ export class PiAcpAgent implements ACPAgent {
     // Replay full conversation history.
     const data = (await proc.getMessages()) as any
     const messages = Array.isArray(data?.messages) ? data.messages : []
+    // Tool-call arguments live on the assistant message; results only carry the id.
+    const toolArgs = new Map<string, unknown>()
 
     for (const m of messages) {
       const role = String(m?.role ?? '')
+
+      if (role === 'assistant' && Array.isArray(m?.content)) {
+        for (const block of m.content) {
+          if (block?.type === 'toolCall' && typeof block.id === 'string') toolArgs.set(block.id, block.arguments)
+        }
+      }
 
       if (role === 'user') {
         const text = normalizePiMessageText(m?.content)
@@ -1448,6 +1457,7 @@ export class PiAcpAgent implements ACPAgent {
         const toolCallId = String((m as any)?.toolCallId ?? crypto.randomUUID())
         const isError = Boolean((m as any)?.isError)
         const isBash = isBashTool(toolName)
+        const args = toolArgs.get(toolCallId)
 
         if (isBash) {
           const text = bashResultText(m)
@@ -1456,7 +1466,8 @@ export class PiAcpAgent implements ACPAgent {
             update: {
               sessionUpdate: 'tool_call',
               toolCallId,
-              title: bashCommand(m) ?? toolName,
+              ...toolCallName(toolName),
+              title: args ? toolTitle(toolName, args, params.cwd) : (bashCommand(m) ?? toolName),
               kind: 'execute',
               status: 'completed',
               content: bashTerminalContent(toolCallId),
@@ -1485,10 +1496,11 @@ export class PiAcpAgent implements ACPAgent {
           update: {
             sessionUpdate: 'tool_call',
             toolCallId,
-            title: toolName,
-            kind: toolName === 'read' ? 'read' : toolName === 'write' || toolName === 'edit' ? 'edit' : 'other',
+            ...toolCallName(toolName),
+            title: toolTitle(toolName, args, params.cwd),
+            kind: toolKind(toolName),
             status: 'completed',
-            rawInput: null,
+            rawInput: args ?? null,
             rawOutput: m
           }
         })
