@@ -278,7 +278,7 @@ test('PiAcpSession: falls back to a generic retry message when auto_retry_start 
 
   makeSession(conn, proc)
 
-  proc.emit({ type: 'auto_retry_start', attempt: 'oops', maxAttempts: null, delayMs: 'bad' } as any)
+  proc.emit({ type: 'auto_retry_start', attempt: 'oops' as any, maxAttempts: null as any, delayMs: 'bad' as any })
 
   await flush()
 
@@ -317,7 +317,7 @@ test('PiAcpSession: emits agent_message_chunk for auto_retry_end', async () => {
 
   makeSession(conn, proc)
 
-  proc.emit({ type: 'auto_retry_end' } as any)
+  proc.emit({ type: 'auto_retry_end' })
 
   await flush()
 
@@ -372,7 +372,7 @@ test('PiAcpSession: preserves ordering when auto_retry_start is interleaved with
   makeSession(conn, proc)
 
   proc.emit({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'before ' } })
-  proc.emit({ type: 'auto_retry_start', attempt: 1, maxAttempts: 2, delayMs: 2000 } as any)
+  proc.emit({ type: 'auto_retry_start', attempt: 1, maxAttempts: 2, delayMs: 2000 })
   proc.emit({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'after' } })
 
   await flush()

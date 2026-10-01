@@ -1,5 +1,21 @@
 import type { AgentSideConnection } from '@agentclientprotocol/sdk'
+import type { JsonAgentSessionEvent, RpcExtensionUIRequest } from '@earendil-works/pi-coding-agent'
 import type { PiRpcEvent, PiSessionStats } from '../../src/pi-rpc/process.js'
+
+/** Events pi actually emits on its RPC stdout, per pi's own exported types. */
+type PiStdoutEvent = JsonAgentSessionEvent | RpcExtensionUIRequest
+
+/**
+ * A pi event for tests: `type` must be a real pi event name (so renamed or removed
+ * events fail typecheck), while payload fields stay partial for brevity.
+ */
+export type FakePiEvent = {
+  [K in PiStdoutEvent['type']]: { type: K } & LoosePayload<Extract<PiStdoutEvent, { type: K }>>
+}[PiStdoutEvent['type']]
+
+/** Optional fields; nested tagged unions (e.g. `assistantMessageEvent`) keep their checked `type`. */
+type LoosePayload<T> = { [P in keyof T]?: LooseTagged<T[P]> } & Record<string, unknown>
+type LooseTagged<V> = V extends { type: string } ? { type: V['type'] } & Partial<V> & Record<string, unknown> : V
 
 type SessionUpdateMsg = Parameters<AgentSideConnection['sessionUpdate']>[0]
 
@@ -64,8 +80,8 @@ export class FakePiRpcProcess {
     for (const h of this.exitHandlers) h(code, signal)
   }
 
-  emit(ev: PiRpcEvent) {
-    for (const h of this.handlers) h(ev)
+  emit(ev: FakePiEvent) {
+    for (const h of this.handlers) h(ev as PiRpcEvent)
   }
 
   async prompt(message: string, attachments: unknown[] = []): Promise<void> {

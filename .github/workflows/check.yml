@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 24] # engines >=20; 24 is the current CI baseline (F-031)
+        node: [22, 24] # engines >=22.19 (pi 0.99.2 minimum); 24 is the current CI baseline (F-031)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

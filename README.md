@@ -51,7 +51,7 @@ The session catalog never changes. After you edit IntelliJ MCP settings or the a
 
 ## Install
 
-Node.js 20 or newer. The pi executable (v0.81.0 or newer) on your PATH.
+Node.js 22.19 or newer. The pi executable (v0.99.2 or newer) on your PATH.
 
 Install it as a Pi package to activate the bundled bridge extension:
 
