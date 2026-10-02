@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { PiAcpAgent } from '../../src/acp/agent.js'
 import { PiRpcProcess } from '../../src/pi-rpc/process.js'
 import { FakeAgentSideConnection, asAgentConn } from '../helpers/fakes.js'
+import { sessionExtensionPaths } from '../../src/acp/tool-approval.js'
 
 // noinspection JSUnusedGlobalSymbols
 class FakeSessions {
@@ -88,7 +89,8 @@ test('PiAcpAgent: prompt auto-restores a missing session from SessionStore', asy
         cwd: '/tmp/store-project',
         sessionPath: '/tmp/store-project/session.jsonl',
         piCommand: process.env.PI_ACP_PI_COMMAND,
-        extensionPaths: [],
+        // Every session's pi loads the tool approval extension.
+        extensionPaths: sessionExtensionPaths(),
         env: {}
       }
     ])
@@ -187,7 +189,8 @@ test('PiAcpAgent: setSessionConfigOption auto-restores via pi session discovery 
         cwd: '/tmp/fallback-project',
         sessionPath: sessionFile,
         piCommand: process.env.PI_ACP_PI_COMMAND,
-        extensionPaths: [],
+        // Every session's pi loads the tool approval extension.
+        extensionPaths: sessionExtensionPaths(),
         env: {}
       }
     ])

@@ -6,7 +6,8 @@ import type {
   SessionUpdate,
   ToolCallContent,
   ToolCallLocation,
-  ClientCapabilities
+  ClientCapabilities,
+  SessionConfigOption
 } from '@agentclientprotocol/sdk'
 import { RequestError } from '@agentclientprotocol/sdk'
 import { readFileSync } from 'node:fs'
@@ -34,6 +35,19 @@ import {
 } from './translate/bash.js'
 import { toolResultToText } from './translate/pi-tools.js'
 import { toolKind, toolTitle } from './translate/tool-call.js'
+import {
+  defaultToolApprovalMode,
+  sessionExtensionPaths,
+  toolApprovalConfigOption,
+  toolApprovalPermissionOptions
+} from './tool-approval.js'
+import {
+  APPROVAL_REJECT,
+  TOOL_APPROVAL_COMMAND,
+  decodeApprovalTitle,
+  type ToolApprovalMode,
+  type ToolApprovalRequest
+} from '../pi-extension/tool-approval.js'
 import { withTimeout } from './usage.js'
 
 type SessionCreateParams = {
@@ -69,6 +83,7 @@ const CONFIRM_PERMISSION_OPTIONS: PermissionOption[] = [
 ]
 const EXTENSION_UI_RAW_INPUT_KEYS = ['title', 'message', 'options', 'placeholder', 'prefill'] as const
 const CHOICE_OPTION_PREFIX = 'choice-'
+const TOOL_APPROVAL_PROBE_TIMEOUT_MS = 5_000
 
 /**
  * Map pi's `stats.contextUsage` (plus cumulative `cost`) to an ACP `usage_update`. Returns null whenever pi
@@ -252,7 +267,7 @@ export class SessionManager {
       proc = await PiRpcProcess.spawn({
         cwd: params.cwd,
         piCommand: params.piCommand,
-        extensionPaths: params.extensionPaths,
+        extensionPaths: sessionExtensionPaths(params.extensionPaths),
         env: params.env
       })
     } catch (e) {
@@ -346,6 +361,13 @@ export class PiAcpSession {
   // ACP messageId of the pi assistant message being streamed; its thinking and text
   // chunks share it. Chunks outside a pi message (adapter notices) get their own id.
   private currentMessageId: string | null = null
+  // Tool approval (see src/acp/tool-approval.ts). Initialized lazily on first use: checks
+  // that pi loaded the approval extension and applies the default mode.
+  private toolApprovalMode: ToolApprovalMode = 'off'
+  private toolApprovalAvailable = false
+  private toolApprovalInit: Promise<void> | null = null
+  // A mode change requested mid-turn; applied when the turn settles.
+  private pendingToolApprovalMode: ToolApprovalMode | null = null
 
   // Current in-flight turn (if any). Additional prompts are queued.
   private pendingTurn: PendingTurn | null = null
@@ -626,6 +648,12 @@ export class PiAcpSession {
     const reason = this.settledStopReason()
     this.pendingTurn?.resolve(reason)
     this.pendingTurn = null
+
+    if (this.pendingToolApprovalMode) {
+      const mode = this.pendingToolApprovalMode
+      this.pendingToolApprovalMode = null
+      await this.sendToolApprovalMode(mode).catch(() => {})
+    }
 
     // Start next queued prompt, if any.
     const next = this.turnQueue.shift()
@@ -1128,7 +1156,9 @@ export class PiAcpSession {
     }
 
     if (method === 'select') {
-      await this.handleExtensionSelect(ev, id)
+      const approval = decodeApprovalTitle(ev.title)
+      if (approval) await this.handleToolApproval(id, approval)
+      else await this.handleExtensionSelect(ev, id)
       return
     }
 
@@ -1204,6 +1234,65 @@ export class PiAcpSession {
     }
 
     await this.proc.sendExtensionUiResponse({ id, confirmed: selected.outcome.optionId === 'yes' })
+  }
+
+  /** The tool approval config option, or null when pi didn't load the approval extension. */
+  async toolApprovalOption(): Promise<SessionConfigOption | null> {
+    await this.ensureToolApproval()
+    return this.toolApprovalAvailable ? toolApprovalConfigOption(this.toolApprovalMode) : null
+  }
+
+  async setToolApprovalMode(mode: ToolApprovalMode): Promise<void> {
+    await this.ensureToolApproval()
+    if (!this.toolApprovalAvailable) {
+      throw RequestError.invalidParams(
+        undefined,
+        'Tool approval is unavailable: the pi approval extension is not loaded'
+      )
+    }
+    // An RPC prompt during a running turn could be queued as steering text; wait for the turn to settle.
+    if (this.pendingTurn) this.pendingToolApprovalMode = mode
+    else await this.sendToolApprovalMode(mode)
+    this.toolApprovalMode = mode
+  }
+
+  private ensureToolApproval(): Promise<void> {
+    this.toolApprovalInit ??= (async () => {
+      try {
+        // Only send the internal command once pi lists it; otherwise the text would reach the model.
+        // Bounded: a pi that never answers must not hold up session setup for the full RPC timeout.
+        const data = (await this.proc.getCommands?.(TOOL_APPROVAL_PROBE_TIMEOUT_MS)) as
+          | { commands?: Array<{ name?: unknown }> }
+          | undefined
+        this.toolApprovalAvailable = Boolean(data?.commands?.some(c => c?.name === TOOL_APPROVAL_COMMAND))
+        const mode = defaultToolApprovalMode()
+        if (this.toolApprovalAvailable && mode !== 'off') await this.sendToolApprovalMode(mode)
+        this.toolApprovalMode = this.toolApprovalAvailable ? mode : 'off'
+      } catch {
+        this.toolApprovalAvailable = false
+      }
+    })()
+    return this.toolApprovalInit
+  }
+
+  private async sendToolApprovalMode(mode: ToolApprovalMode): Promise<void> {
+    await this.proc.prompt(`/${TOOL_APPROVAL_COMMAND} ${mode}`)
+  }
+
+  /** Turns the approval extension's marked select dialog into an ACP permission request. */
+  private async handleToolApproval(id: string, req: ToolApprovalRequest): Promise<void> {
+    let value: string = APPROVAL_REJECT
+    try {
+      const res = await this.conn.requestPermission({
+        sessionId: this.sessionId,
+        toolCall: { toolCallId: req.toolCallId, status: 'pending' },
+        options: toolApprovalPermissionOptions(req.toolName)
+      })
+      if (res.outcome.outcome === 'selected') value = res.outcome.optionId
+    } catch {
+      // No answer means no approval.
+    }
+    await this.proc.sendExtensionUiResponse({ id, value })
   }
 
   private async handleExtensionInput(ev: PiRpcEvent, id: string): Promise<void> {

@@ -46,6 +46,8 @@ import { sessionStatsToAcpUsage } from './usage.js'
 import { piModelsToProviderInfo } from './providers.js'
 import { toolResultToText } from './translate/pi-tools.js'
 import { toolKind, toolTitle } from './translate/tool-call.js'
+import { TOOL_APPROVAL_CONFIG_ID, sessionExtensionPaths } from './tool-approval.js'
+import { parseToolApprovalMode } from '../pi-extension/tool-approval.js'
 import {
   bashCommand,
   bashExitCode,
@@ -288,7 +290,7 @@ export class PiAcpAgent implements ACPAgent {
           cwd,
           sessionPath: stored.sessionFile,
           piCommand: process.env.PI_ACP_PI_COMMAND,
-          extensionPaths: bridgeSettings.extensionPaths,
+          extensionPaths: sessionExtensionPaths(bridgeSettings.extensionPaths),
           env: bridgeSettings.env
         })
       } catch (e: unknown) {
@@ -504,7 +506,8 @@ export class PiAcpAgent implements ACPAgent {
     }
     // Thinking levels go out only as the `thought_level` config option, never as legacy
     // session `modes` (which clients would show as a second thinking selector).
-    const { configOptions, models } = configuration
+    const { models } = configuration
+    const configOptions = await withSessionConfigOptions(session, configuration.configOptions)
 
     const quietStartup = getQuietStartup(params.cwd)
     const updateNotice = buildUpdateNotice()
@@ -1220,7 +1223,7 @@ export class PiAcpAgent implements ACPAgent {
         cwd: params.cwd,
         sessionPath: source.sessionFile,
         piCommand: process.env.PI_ACP_PI_COMMAND,
-        extensionPaths: bridgeSettings.extensionPaths,
+        extensionPaths: sessionExtensionPaths(bridgeSettings.extensionPaths),
         env: bridgeSettings.env
       })
     } catch (e: unknown) {
@@ -1275,7 +1278,10 @@ export class PiAcpAgent implements ACPAgent {
           // (its file is untouched; the fork lives in its own new file).
           await this.closeManagedSessionsExcept(sessionId)
 
-          const { configOptions } = await getSessionConfiguration(proc)
+          const configOptions = await withSessionConfigOptions(
+            this.sessions.maybeGet(sessionId),
+            (await getSessionConfiguration(proc)).configOptions
+          )
 
           return {
             sessionId,
@@ -1337,7 +1343,10 @@ export class PiAcpAgent implements ACPAgent {
     })
 
     await this.closeManagedSessionsExcept(session.sessionId)
-    const { configOptions } = await getSessionConfiguration(session.proc)
+    const configOptions = await withSessionConfigOptions(
+      session,
+      (await getSessionConfiguration(session.proc)).configOptions
+    )
     return { configOptions }
   }
 
@@ -1434,7 +1443,8 @@ export class PiAcpAgent implements ACPAgent {
     }
     // Thinking levels go out only as the `thought_level` config option, never as legacy
     // session `modes` (which clients would show as a second thinking selector).
-    const { configOptions, models } = configuration
+    const { models } = configuration
+    const configOptions = await withSessionConfigOptions(session, configuration.configOptions)
     const fileCommands = loadSlashCommands(params.cwd)
 
     // Policy: within a single ACP connection (one Zed window), keep only one live pi subprocess.
@@ -1662,7 +1672,7 @@ export class PiAcpAgent implements ACPAgent {
   async unstable_setSessionModel(params: { sessionId: string; modelId: string }): Promise<void> {
     const session = await this.restoreSession(params.sessionId)
     await setSessionModel(session.proc, params.modelId)
-    await emitConfigOptionsUpdate(this.conn, session.sessionId, session.proc)
+    await emitConfigOptionsUpdate(this.conn, session)
     await session.publishContextUsage()
   }
 
@@ -1676,7 +1686,7 @@ export class PiAcpAgent implements ACPAgent {
 
     await session.proc.setThinkingLevel(mode)
 
-    await emitConfigOptionsUpdate(this.conn, session.sessionId, session.proc)
+    await emitConfigOptionsUpdate(this.conn, session)
 
     return {}
   }
@@ -1699,11 +1709,15 @@ export class PiAcpAgent implements ACPAgent {
       }
 
       await session.proc.setThinkingLevel(params.value)
+    } else if (configId === TOOL_APPROVAL_CONFIG_ID) {
+      const mode = parseToolApprovalMode(params.value)
+      if (!mode) throw RequestError.invalidParams(undefined, `Unknown tool approval mode: ${params.value}`)
+      await session.setToolApprovalMode(mode)
     } else {
       throw RequestError.invalidParams(`Unknown config option: ${configId}`)
     }
 
-    const configOptions = await emitConfigOptionsUpdate(this.conn, session.sessionId, session.proc)
+    const configOptions = await emitConfigOptionsUpdate(this.conn, session)
     // A different model can mean a different context window; refresh it immediately.
     if (modelChanged) await session.publishContextUsage()
     return { configOptions }
@@ -1737,6 +1751,16 @@ async function getThinkingState(
       description: null
     }))
   }
+}
+
+/** Appends the session-level options (tool approval) to pi's model and thinking options. */
+async function withSessionConfigOptions(
+  session: PiAcpSession | undefined,
+  configOptions: SessionConfigOption[]
+): Promise<SessionConfigOption[]> {
+  // Tests sometimes stub sessions without the approval API.
+  const approval = typeof session?.toolApprovalOption === 'function' ? await session.toolApprovalOption() : null
+  return approval ? [...configOptions, approval] : configOptions
 }
 
 async function getSessionConfiguration(
@@ -1883,10 +1907,13 @@ async function getModelState(
 
 async function emitConfigOptionsUpdate(
   conn: AgentSideConnection,
-  sessionId: string,
-  proc: PiRpcProcess
+  session: PiAcpSession
 ): Promise<SessionConfigOption[]> {
-  const { configOptions } = await getSessionConfiguration(proc)
+  const sessionId = session.sessionId
+  const configOptions = await withSessionConfigOptions(
+    session,
+    (await getSessionConfiguration(session.proc)).configOptions
+  )
 
   await conn.sessionUpdate({
     sessionId,

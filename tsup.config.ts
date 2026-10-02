@@ -18,7 +18,7 @@ function gitDirty(): boolean {
 }
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/pi-extension/acp-mcp-bridge.ts'],
+  entry: ['src/index.ts', 'src/pi-extension/acp-mcp-bridge.ts', 'src/pi-extension/tool-approval.ts'],
   format: ['esm'],
   platform: 'node',
   target: 'node22',

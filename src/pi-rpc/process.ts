@@ -421,8 +421,8 @@ export class PiRpcProcess {
     return res.data
   }
 
-  async getCommands(): Promise<unknown> {
-    const res = await this.request({ type: 'get_commands' })
+  async getCommands(timeoutMs?: number): Promise<unknown> {
+    const res = await this.request({ type: 'get_commands' }, timeoutMs)
     if (!res.success) throw new Error(`pi get_commands failed: ${res.error ?? JSON.stringify(res.data)}`)
     return res.data
   }

@@ -33,6 +33,8 @@ When a turn settles the adapter makes one `get_session_stats` call and reports t
 
 The adapter also sends `usage_update` on `session/new` and `session/load`, and after a model switch. Right after compaction pi has no trusted token count, so the client keeps the previous value.
 
+Tool approval is a session option: Off (default), Ask for edits & commands, or Ask for everything. pi has no approval step of its own, so the adapter loads a small pi extension into every session that pauses each tool call needing approval and asks the client through `session/request_permission`, attached to the tool call, with Allow, Always allow (that tool, for the rest of the session) and Reject. "Ask for edits & commands" lets read, grep, find and ls run without asking. Set `PI_ACP_TOOL_APPROVAL=edits` or `all` to change the default.
+
 Text input requests use the unstable ACP elicitation API when the client declares form elicitation in `initialize`; otherwise they are cancelled with a visible notice. Requests that fit permissions route through ACP permissions. An editor request shows a cancellation notice because elicitation forms hold primitive fields only.
 
 Thinking levels are offered as a `thought_level` config option, limited to the levels the current model supports. They are not sent as session modes, so clients show one thinking selector; `session/set_mode` still accepts a level for older clients. The model selector works through a mapping from pi models to ACP provider info. Pi keeps provider credentials outside the RPC surface.
@@ -169,6 +171,7 @@ A development profile with a conservative tool subset:
 | `PI_ACP_PI_COMMAND`                     | Path to the pi executable. Default: `pi`.                                                                                                            |
 | `PI_ACP_DEBUG_BRIDGE=1`                 | Log the sanitized `session/new` MCP descriptor to stderr. IntelliJ writes that stderr into `idea.log`.                                               |
 | `PI_ACP_DEBUG_ACP=1` or a file path     | Log incoming ACP requests and outgoing errors to `~/.pi/pi-acp/acp-debug.log` (or the given file). Prompt text, images, env and headers are omitted. |
+| `PI_ACP_TOOL_APPROVAL=off\|edits\|all`  | Default tool approval mode for new sessions. Default: `off`.                                                                                         |
 | `PI_ACP_ENABLE_EMBEDDED_CONTEXT=true`   | Advertise `embeddedContext` support.                                                                                                                 |
 | `PI_ACP_ENFORCE_IDE_INSPECT=0`          | Disable the inspection gate that runs after each turn.                                                                                               |
 | `PI_ACP_IDE_MODE=off\|prefer\|required` | IntelliJ-first coding mode for the session. Default: `off`. See the IntelliJ-first coding mode section.                                              |

@@ -22,6 +22,7 @@ process.on('SIGTERM', () => {
 readline.createInterface({ input: process.stdin }).on('line', line => {
   const msg = JSON.parse(line)
   if (msg.type === 'get_state') process.stdout.write(JSON.stringify({ type: 'response', id: msg.id, command: msg.type, success: true, data: { thinkingLevel: 'medium' } }) + '\\n')
+  if (msg.type === 'get_commands') process.stdout.write(JSON.stringify({ type: 'response', id: msg.id, command: msg.type, success: true, data: { commands: [] } }) + '\\n')
   if (msg.type === 'get_available_thinking_levels') process.stdout.write(JSON.stringify({ type: 'response', id: msg.id, command: msg.type, success: true, data: { levels: ['off', 'medium'] } }) + '\\n')
   if (msg.type === 'get_available_models') process.stdout.write(JSON.stringify({ type: 'response', id: msg.id, command: msg.type, success: true, data: { models: [{ provider: 'test', id: 'model', name: 'model' }] } }) + '\\n')
 })
