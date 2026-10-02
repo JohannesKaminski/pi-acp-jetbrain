@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { join } from 'node:path'
 import { shellCommandKind, toolKind, toolTitle } from '../../src/acp/translate/tool-call.js'
 
 const CWD = '/work/project'
@@ -21,7 +22,7 @@ test('toolTitle: read shows the line range in every offset/limit combination', (
 })
 
 test('toolTitle: absolute paths inside the cwd are shown relative; others stay absolute', () => {
-  assert.equal(toolTitle('edit', { path: '/work/project/src/a.ts' }, CWD), 'Edit src/a.ts')
+  assert.equal(toolTitle('edit', { path: '/work/project/src/a.ts' }, CWD), `Edit ${join('src', 'a.ts')}`)
   assert.equal(toolTitle('write', { path: '/etc/hosts' }, CWD), 'Write /etc/hosts')
   assert.equal(toolTitle('read', { path: '/work/project-other/a.ts' }, CWD), 'Read /work/project-other/a.ts')
   assert.equal(toolTitle('ls', { path: '/work/project' }, CWD), 'List .')

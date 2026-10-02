@@ -233,7 +233,8 @@ export class E2EClient {
     const timer = setTimeout(() => this.child.kill('SIGKILL'), 10_000)
     await exited
     clearTimeout(timer)
-    rmSync(this.root, { recursive: true, force: true })
+    // Windows can hold files of a just-ended process for a moment; retry instead of failing.
+    rmSync(this.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   }
 }
 

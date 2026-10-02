@@ -80,6 +80,7 @@ import { existsSync, readFileSync, realpathSync, readdirSync, statSync, unlinkSy
 import type { AvailableCommand } from '@agentclientprotocol/sdk'
 import { join, dirname, basename, relative, sep } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import crossSpawn from 'cross-spawn'
 import { pathToFileURL } from 'node:url'
 
 type AdvertisedModel = {
@@ -878,7 +879,7 @@ export class PiAcpAgent implements ACPAgent {
 
           // 2) Fallback: ask npm where global modules live.
           try {
-            const npmRoot = spawnSync('npm', ['root', '-g'], { encoding: 'utf-8' })
+            const npmRoot = crossSpawn.sync('npm', ['root', '-g'], { encoding: 'utf-8' })
             const root = String(npmRoot.stdout ?? '').trim()
             if (root) {
               const p = join(root, '@earendil-works', 'pi-coding-agent', 'CHANGELOG.md')
@@ -2009,7 +2010,7 @@ function buildUpdateNotice(): string | null {
   // Best-effort update check against npm registry.
   // Important: keep it fast to not slow down session/new.
   try {
-    const piVersion = spawnSync(getPiCommand(process.env.PI_ACP_PI_COMMAND), ['--version'], { encoding: 'utf-8' })
+    const piVersion = crossSpawn.sync(getPiCommand(process.env.PI_ACP_PI_COMMAND), ['--version'], { encoding: 'utf-8' })
     const installed = (String(piVersion.stdout ?? '').trim() || String(piVersion.stderr ?? '').trim()).replace(
       /^v/i,
       ''
@@ -2017,7 +2018,7 @@ function buildUpdateNotice(): string | null {
 
     if (!installed || !isSemver(installed)) return null
 
-    const latestRes = spawnSync('npm', ['view', '@earendil-works/pi-coding-agent', 'version'], {
+    const latestRes = crossSpawn.sync('npm', ['view', '@earendil-works/pi-coding-agent', 'version'], {
       encoding: 'utf-8',
       timeout: 800
     })
@@ -2146,7 +2147,7 @@ export function buildStartupInfo(opts: {
 
   // pi version header
   try {
-    const piVersion = spawnSync(getPiCommand(process.env.PI_ACP_PI_COMMAND), ['--version'], { encoding: 'utf-8' })
+    const piVersion = crossSpawn.sync(getPiCommand(process.env.PI_ACP_PI_COMMAND), ['--version'], { encoding: 'utf-8' })
     const installed = (String(piVersion.stdout ?? '').trim() || String(piVersion.stderr ?? '').trim()).replace(
       /^v/i,
       ''

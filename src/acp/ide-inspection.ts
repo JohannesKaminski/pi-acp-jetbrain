@@ -112,7 +112,8 @@ export function collectChangedFiles(cwd: string, maxFiles = DEFAULT_MAX_FILES): 
 function normalizeInspectPath(cwd: string, raw: string): string | null {
   const cleaned = raw.replace(/\\/g, '/').trim()
   if (!cleaned) return null
-  const rel = isAbsolute(cleaned) ? relative(cwd, cleaned) : cleaned.replace(/^\.\//, '')
+  // Repo-relative with `/` separators, the form git status reports (relative() uses `\` on Windows).
+  const rel = (isAbsolute(cleaned) ? relative(cwd, cleaned) : cleaned.replace(/^\.\//, '')).replace(/\\/g, '/')
   if (!rel || rel.startsWith('..') || isAbsolute(rel)) return null
   if (rel.split('/').includes('..')) return null
   return rel

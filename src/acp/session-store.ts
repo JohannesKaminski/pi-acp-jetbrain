@@ -46,7 +46,9 @@ function withFileLock<T>(path: string, operation: () => T): T {
       mkdirSync(lockPath, { mode: 0o700 })
       break
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      // Windows can report EPERM instead of EEXIST while another process holds or removes the lock.
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'EEXIST' && !(code === 'EPERM' && process.platform === 'win32')) throw error
       if (lockIsStale(lockPath)) {
         rmSync(lockPath, { recursive: true, force: true })
         continue

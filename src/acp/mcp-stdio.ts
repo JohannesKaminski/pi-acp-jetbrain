@@ -1,4 +1,6 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { type ChildProcessWithoutNullStreams } from 'node:child_process'
+import crossSpawn from 'cross-spawn'
+import { terminateProcessTree } from '../process-tree.js'
 import { createInterface, type Interface } from 'node:readline'
 import { basename } from 'node:path'
 import type { McpServerStdio } from '@agentclientprotocol/sdk'
@@ -118,12 +120,12 @@ export class StdioMcpClient {
     for (const variable of server.env) env[variable.name] = variable.value
 
     const summary = launchSummary(server, cwd)
-    const child = spawn(server.command, server.args, {
+    // cross-spawn resolves Windows launchers (npx -> npx.cmd) and quotes their arguments.
+    const child = crossSpawn(server.command, server.args, {
       cwd,
       env,
-      stdio: 'pipe',
-      shell: process.platform === 'win32' && /\\.(?:cmd|bat)$/i.test(server.command)
-    })
+      stdio: 'pipe'
+    }) as ChildProcessWithoutNullStreams
     const client = new StdioMcpClient(child, summary, onNotification)
     try {
       await client.#waitForSpawn()
@@ -170,21 +172,9 @@ export class StdioMcpClient {
       this.#closed = true
       this.#failPending(new Error('MCP stdio server closed'))
       this.#lines.close()
-      if (!this.#child.killed) {
-        try {
-          this.#child.kill('SIGTERM')
-        } catch {
-          // The process may have exited between the check and kill.
-        }
-      }
+      if (!this.#child.killed) terminateProcessTree(this.#child, 'SIGTERM')
       await Promise.race([this.#exit, new Promise(resolve => setTimeout(resolve, 1000))])
-      if (this.#child.exitCode === null) {
-        try {
-          this.#child.kill('SIGKILL')
-        } catch {
-          // Ignore a process that exited during cleanup.
-        }
-      }
+      if (this.#child.exitCode === null) terminateProcessTree(this.#child, 'SIGKILL')
     })()
     return this.#closePromise
   }

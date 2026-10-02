@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import * as readline from 'node:readline'
 import crossSpawn from 'cross-spawn'
 import { getPiCommand, shouldUseShellForPiCommand } from './command.js'
+import { terminateProcessTree } from '../process-tree.js'
 
 export class PiRpcSpawnError extends Error {
   /** Underlying spawn error code, e.g. ENOENT, EACCES */
@@ -280,11 +281,7 @@ export class PiRpcProcess {
 
   dispose(signal: NodeJS.Signals | number = 'SIGTERM'): void {
     if (this.child.killed || this.child.exitCode !== null || this.child.signalCode !== null) return
-    try {
-      this.child.kill(signal as any)
-    } catch {
-      // ignore
-    }
+    terminateProcessTree(this.child, typeof signal === 'string' ? signal : 'SIGTERM')
   }
 
   async waitForExit(timeoutMs = 1_000): Promise<boolean> {
@@ -300,11 +297,7 @@ export class PiRpcProcess {
     if (this.child.exitCode !== null || this.child.signalCode !== null) return true
     // The child ignored SIGTERM; force termination and give it one more short
     // grace period before reporting failure.
-    try {
-      this.child.kill('SIGKILL')
-    } catch {
-      // ignore
-    }
+    terminateProcessTree(this.child, 'SIGKILL')
     await Promise.race([
       this.exitPromise,
       new Promise(resolve => {
