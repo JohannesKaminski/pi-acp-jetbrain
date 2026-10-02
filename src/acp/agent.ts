@@ -1521,7 +1521,7 @@ export class PiAcpAgent implements ACPAgent {
               toolCallId,
               name: toolName,
               title: args ? toolTitle(toolName, args, params.cwd) : (bashCommand(m) ?? toolName),
-              kind: 'execute',
+              kind: toolKind(toolName, args ?? m),
               status: 'completed',
               content: bashTerminalContent(toolCallId),
               _meta: bashTerminalInfoMeta(toolCallId, params.cwd)

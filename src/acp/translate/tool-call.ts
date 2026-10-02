@@ -3,10 +3,10 @@ import { isAbsolute, relative, sep } from 'node:path'
 import { bashCommand } from './bash.js'
 
 // Titles and kinds for pi's built-in tools (read, bash, powershell, edit, write, grep,
-// find, ls). Argument names follow pi 1.0's tool schemas. Anything else, including
+// find, ls); bash calls are classified by their command. Argument names follow pi 1.0's tool schemas. Anything else, including
 // extension and MCP tools, keeps its pi tool name as title and kind `other`.
 
-export function toolKind(toolName: string): ToolKind {
+export function toolKind(toolName: string, args?: unknown): ToolKind {
   switch (toolName) {
     case 'read':
       return 'read'
@@ -14,6 +14,7 @@ export function toolKind(toolName: string): ToolKind {
     case 'edit':
       return 'edit'
     case 'bash':
+      return shellCommandKind(bashCommand(args))
     case 'powershell':
       return 'execute'
     case 'grep':
@@ -23,6 +24,25 @@ export function toolKind(toolName: string): ToolKind {
     default:
       return 'other'
   }
+}
+
+// pi searches and reads through bash by default (grep/find/ls aren't enabled out of the box),
+// so simple read-only commands get the kind of what they do. Deliberately conservative: only a
+// single command, with no pipes, chaining, redirection, substitution, or backgrounding.
+const SEARCH_COMMANDS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'find', 'fd', 'ls', 'tree'])
+const READ_COMMANDS = new Set(['cat', 'head', 'tail', 'wc', 'stat', 'file'])
+const SHELL_OPERATORS = /[|;&<>`\n]|\$\(/
+
+export function shellCommandKind(command: string | undefined): ToolKind {
+  const trimmed = command?.trim()
+  if (!trimmed || SHELL_OPERATORS.test(trimmed)) return 'execute'
+  const words = trimmed.split(/\s+/)
+  const program = words[0]!
+  // find can delete files or run arbitrary commands.
+  if (program === 'find' && words.some(w => /^-(exec|execdir|ok|okdir|delete|fprint\w*|fls)$/.test(w))) return 'execute'
+  if (SEARCH_COMMANDS.has(program)) return 'search'
+  if (READ_COMMANDS.has(program)) return 'read'
+  return 'execute'
 }
 
 /**

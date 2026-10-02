@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { toolKind, toolTitle } from '../../src/acp/translate/tool-call.js'
+import { shellCommandKind, toolKind, toolTitle } from '../../src/acp/translate/tool-call.js'
 
 const CWD = '/work/project'
 
@@ -57,4 +57,32 @@ test('toolTitle: falls back to the tool name for missing or partial args and unk
   ] as const) {
     assert.equal(toolTitle(name, args, CWD), name, `${name} ${JSON.stringify(args)}`)
   }
+})
+
+test('shellCommandKind: single read-only commands get search or read; anything else stays execute', () => {
+  const cases: Array<[string | undefined, string]> = [
+    ['ls -la src', 'search'],
+    ['rg -n TODO', 'search'],
+    ['grep -rn "a b" src', 'search'],
+    ['find . -name "*.ts"', 'search'],
+    ['tree -L 2', 'search'],
+    ['cat README.md', 'read'],
+    ['head -n 20 a.ts', 'read'],
+    ['wc -l a.ts', 'read'],
+    ['find . -name "*.tmp" -delete', 'execute'],
+    ['find . -exec rm {} ;', 'execute'],
+    ['grep TODO a.ts | wc -l', 'execute'],
+    ['cat a.ts > b.ts', 'execute'],
+    ['ls && rm -rf build', 'execute'],
+    ['cat $(echo a.ts)', 'execute'],
+    ['cat `echo a.ts`', 'execute'],
+    ['ls\nrm a', 'execute'],
+    ['npm test', 'execute'],
+    ['', 'execute'],
+    [undefined, 'execute']
+  ]
+  for (const [command, kind] of cases) assert.equal(shellCommandKind(command), kind, String(command))
+  assert.equal(toolKind('bash', { command: 'ls' }), 'search')
+  assert.equal(toolKind('bash'), 'execute')
+  assert.equal(toolKind('powershell', { command: 'Get-ChildItem' }), 'execute')
 })

@@ -736,12 +736,13 @@ export class PiAcpSession {
       toolCallId: params.toolCallId,
       ...(params.sessionUpdate === 'tool_call' ? { name: params.toolName } : {}),
       title: toolTitle(params.toolName, params.args, this.cwd),
-      kind: 'execute',
+      kind: toolKind(params.toolName, params.args),
       status: params.status,
       locations: params.locations,
       ...(params.includeTerminal ? { content: bashTerminalContent(params.toolCallId) } : {}),
       ...(params.includeTerminal ? { _meta: bashTerminalInfoMeta(params.toolCallId, this.cwd) } : {})
-    })
+      // Valid as either a tool_call or a tool_call_update; TS can't narrow the computed union.
+    } as SessionUpdate)
   }
 
   private emitBashOutputUpdate(params: {

@@ -103,7 +103,8 @@ test('PiAcpSession: emits tool_call + tool_call_update + completes', async () =>
   assert.equal(conn.updates[0]!.update.sessionUpdate, 'tool_call')
   assert.equal((conn.updates[0]!.update as any).toolCallId, 't1')
   assert.equal((conn.updates[0]!.update as any).title, 'ls')
-  assert.equal((conn.updates[0]!.update as any).kind, 'execute')
+  // `ls` is a read-only command, so it gets the search kind.
+  assert.equal((conn.updates[0]!.update as any).kind, 'search')
   assert.equal((conn.updates[0]!.update as any).status, 'in_progress')
   assert.equal((conn.updates[0]!.update as any).locations, undefined)
   assert.deepEqual((conn.updates[0]!.update as any).content, [{ type: 'terminal', terminalId: 't1' }])

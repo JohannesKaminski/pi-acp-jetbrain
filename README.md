@@ -184,7 +184,7 @@ IntelliJ applies setting changes right before the next prompt.
 
 Assistant text streams as `agent_message_chunk`. Reasoning streams as `agent_thought_chunk` when the provider sends it. Every chunk carries a `messageId`: the thinking and text of one pi reply share one, and each adapter notice and replayed message gets its own.
 
-Tool runs map to `tool_call` and `tool_call_update` with the pi tool `name`, an ACP kind, and a readable title built from the arguments: `Read src/a.ts (lines 10–14)`, `Search for "TODO" in src`, `List src`, `Edit README.md`. Bash calls use the command as the title and stream their output as a terminal. Extension and IDE tools keep their pi name as the title. Images in tool results (pi's read tool on an image file, images generated in codemode with pi 1.0's `models.generateImages()`) reach the client as image content.
+Tool runs map to `tool_call` and `tool_call_update` with the pi tool `name`, an ACP kind, and a readable title built from the arguments: `Read src/a.ts (lines 10–14)`, `Search for "TODO" in src`, `List src`, `Edit README.md`. Bash calls use the command as the title and stream their output as a terminal; a single read-only command (`ls`, `grep`, `rg`, `find`, `cat`, `head`, …, without pipes, chaining, or redirection) gets the search or read kind, anything else stays execute. Extension and IDE tools keep their pi name as the title. Images in tool results (pi's read tool on an image file, images generated in codemode with pi 1.0's `models.generateImages()`) reach the client as image content.
 
 pi enables only read, bash, edit, and write by default. Add `"defaultTools": ["+grep", "+find", "+ls"]` to `~/.pi/agent/settings.json` for dedicated search tools; otherwise pi searches through bash.
 
