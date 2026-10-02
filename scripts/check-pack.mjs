@@ -3,7 +3,7 @@
 // works only inside this repo, e.g. a runtime import of a devDependency such as
 // pi-coding-agent (installs don't have it). Doesn't need pi: initialize never spawns it.
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,17 +19,12 @@ function fail(message) {
 }
 
 try {
-  // Build first, then pack without lifecycle scripts so `--json` output stays parseable.
-  execFileSync(npm, ['run', 'build'], { cwd: root, stdio: ['ignore', 'ignore', 'inherit'] })
-  const packJson = JSON.parse(
-    execFileSync(npm, ['pack', '--json', '--ignore-scripts', '--pack-destination', work], {
-      cwd: root,
-      encoding: 'utf8'
-    })
-  )
-  // npm ≤ 11 prints an array; npm 12 an object keyed by package name.
-  const packed = [Array.isArray(packJson) ? packJson[0] : Object.values(packJson)[0]]
-  const tarball = join(work, packed[0].filename)
+  // Pack (which builds via prepare) and find the tarball on disk. npm's stdout differs between
+  // versions (npm 10 interleaves the build log even with --json), so it isn't parsed.
+  execFileSync(npm, ['pack', '--pack-destination', work], { cwd: root, stdio: ['ignore', 'ignore', 'inherit'] })
+  const tarballName = readdirSync(work).find(name => name.endsWith('.tgz'))
+  if (!tarballName) fail('npm pack produced no tarball')
+  const tarball = join(work, tarballName)
   const prefix = join(work, 'prefix')
   execFileSync(npm, ['install', '-g', '--prefix', prefix, tarball, '--no-audit', '--no-fund'], {
     cwd: work,
@@ -40,10 +35,9 @@ try {
     process.platform === 'win32'
       ? join(prefix, 'node_modules', 'pi-acp-jetbrain')
       : join(prefix, 'lib', 'node_modules', 'pi-acp-jetbrain')
-  for (const file of [
-    'dist/index.js',
-    ...packed[0].files.map(f => f.path).filter(p => p.startsWith('dist/pi-extension/') && p.endsWith('.js'))
-  ]) {
+  // Every built entry (adapter and bundled pi extensions) must be in the installed package.
+  const extensions = readdirSync(join(root, 'dist', 'pi-extension')).filter(name => name.endsWith('.js'))
+  for (const file of ['dist/index.js', ...extensions.map(name => `dist/pi-extension/${name}`)]) {
     if (!existsSync(join(pkgDir, file))) fail(`installed package is missing ${file}`)
   }
 
@@ -77,7 +71,7 @@ try {
   })
   if (result?.result?.protocolVersion !== 1) fail(`unexpected initialize response: ${JSON.stringify(result)}`)
 
-  console.log(`OK check-pack (${packed[0].filename}: clean install starts and answers initialize)`)
+  console.log(`OK check-pack (${tarballName}: clean install starts and answers initialize)`)
   rmSync(work, { recursive: true, force: true })
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error))
