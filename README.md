@@ -17,116 +17,100 @@ npm package: `pi-acp-jetbrain` (see the version badge for the current release). 
 
 ![pi-acp-jetbrain session in IntelliJ](assets/pi-acp-jetbrain-ide.png)
 
-## Coverage
-
-The adapter covers the session surface: `session/new`, `session/prompt`, `session/cancel`, `session/list`, `session/load`, `session/fork`, `session/resume`, `session/close`, `session/delete`. Pi keeps its own session files. The adapter keeps a small map at `~/.pi/pi-acp/session-map.json` so a load can reattach to the stored session.
-
-Assistant text streams as `agent_message_chunk`. Reasoning streams as `agent_thought_chunk` when the provider sends it. Every chunk carries a `messageId`: the thinking and text of one pi reply share one, and each adapter notice and replayed message gets its own. Tool runs map to `tool_call` and `tool_call_update` events.
-
-A turn ends with `max_tokens` when the model hit its output limit and `cancelled` when it was stopped. A failed turn (provider error, pi crash) returns a JSON-RPC error with pi's message. Errors pi retries on its own, and context overflows it recovers from by compacting, don't end the turn.
-
-Edit events carry a file location when pi reports a path. The adapter resolves relative paths against the session working directory. For text edits it finds the changed line from one unique match and reports a structured diff.
-
-Each session starts with a pi startup block. Set `quietStartup: true` in pi settings to hide it.
-
-When a turn settles the adapter makes one `get_session_stats` call and reports two things from it. Context window occupancy from pi `contextUsage`, with the cumulative session cost in USD, goes out as an ACP `usage_update` before the prompt resolves. Cumulative token use and cost go on the unstable `usage` field of the prompt response. The call waits at most 1 second. If it fails or times out, the turn still ends and both reports are left out. A turn that ends without settling (pi error, process exit) fetches the stats once for the `usage` field only.
-
-The adapter also sends `usage_update` on `session/new` and `session/load`, and after a model switch. Right after compaction pi has no trusted token count, so the client keeps the previous value.
-
-Tool approval is a session option: Off (default), Ask for edits & commands, or Ask for everything. pi has no approval step of its own, so the adapter loads a small pi extension into every session that pauses each tool call needing approval and asks the client through `session/request_permission`, attached to the tool call, with Allow, Always allow (that tool, for the rest of the session) and Reject. "Ask for edits & commands" lets read, grep, find and ls run without asking. Set `PI_ACP_TOOL_APPROVAL=edits` or `all` to change the default.
-
-File access is a session option when the client supports ACP file reads and writes (IntelliJ does): Through the editor (default) or Disk. Through the editor, pi's read, edit and write tools go through `fs/read_text_file` and `fs/write_text_file`: pi sees unsaved changes and its edits land in the editor. Search tools (grep, find, ls) and shell commands still use the disk, and images stay on disk. Writing through the editor saves that file, including unsaved changes you had in it. Set `PI_ACP_FILE_ACCESS=disk` to make Disk the default.
-
-Text input requests use the unstable ACP elicitation API when the client declares form elicitation in `initialize`; otherwise they are cancelled with a visible notice. Requests that fit permissions route through ACP permissions. An editor request shows a cancellation notice because elicitation forms hold primitive fields only.
-
-Thinking levels are offered as a `thought_level` config option, limited to the levels the current model supports. They are not sent as session modes, so clients show one thinking selector; `session/set_mode` still accepts a level for older clients. The model selector works through a mapping from pi models to ACP provider info. Pi keeps provider credentials outside the RPC surface.
-
-Slash commands load file-based prompts from pi and a set of built-ins: `/compact`, `/export`, `/session`, `/name`, `/queue`, `/changelog`, `/steering`, `/follow-up`. Skills appear as `/skill:<name>` when enabled in pi settings.
-
-The local tree carries pi developer tooling: 9 prompt commands, 101 skill files (91 leaves in 10 packs), and 12 format templates under `.pi/`. These checks run in the development tree and skip on clean CI checkouts.
-
-## JetBrains IDE bridge
-
-IntelliJ sends its built-in MCP server descriptor with each chat. The adapter exposes those IDE tools to pi as `ide_<server>_<tool>` extension tools.
-
-The bridge opens a direct MCP-over-SSE client against `http://127.0.0.1:<IJ_MCP_SERVER_PORT>/sse` when the descriptor carries that port. It starts the stdio child only when that endpoint is unreachable.
-
-Two allowlists guard the IDE tools. The IDE side reads `idea_mcp_allowed_tools` from `~/.jetbrains/acp.json`. An omitted key means AllowAll in the installed build. The adapter side deny-lists `execute_tool` and every `xdebug_*` name. Set `PI_ACP_IDE_EXTRA_TOOLS` with a comma separated list of remote names to re-allow tools you reviewed.
-
-The session catalog never changes. After you edit IntelliJ MCP settings or the allowlist, open a new chat.
-
 ## Install
 
-Node.js 22.19 or newer. The pi executable (v0.99.2 or newer) on your PATH.
+You need Node.js 22.19 or newer and pi 0.99.2 or newer with a working model (run `pi` once in a terminal to check).
 
-Install it as a Pi package to activate the bundled bridge extension:
+The adapter loads its bundled pi extensions (IDE bridge, tool approval, file access) into every pi session it starts, so installing the adapter is enough. `pi install` additionally registers the IDE bridge as a pi package; it is optional.
 
-```bash
-pi install npm:pi-acp-jetbrain
+### From npm (released versions)
+
+The shortest setup: let `npx` fetch and run a pinned release. Replace `<version>` with the current release (see the badge):
+
+```json
+"pi-acp-jetbrain": {
+  "command": "npx",
+  "args": ["-y", "pi-acp-jetbrain@<version>"],
+  "env": {}
+}
 ```
 
-Pi records the package in `~/.pi/agent/settings.json` and enables its declared extension automatically. Installing only with `npm install -g` provides the executable but does not activate Pi package resources.
-
-Install the `pi-acp` command globally when you want it directly on your PATH:
+Or install the `pi-acp` command globally and use `"command": "pi-acp"`:
 
 ```bash
 npm install -g pi-acp-jetbrain
 ```
 
-The package name is `pi-acp-jetbrain`. The installed command stays `pi-acp`.
+The package name is `pi-acp-jetbrain`. The installed command is `pi-acp`.
 
-Register the adapter in `~/.jetbrains/acp.json`:
+### From GitHub (unreleased branches and tags)
+
+`npx` can install straight from a GitHub repository, without an npm release. npm clones the ref, installs the build tools, and builds `dist/` through the `prepare` script:
 
 ```json
-{
-  "agent_servers": {
-    "pi-acp-jetbrain": {
-      "command": "pi-acp",
-      "args": [],
-      "env": {}
-    }
-  }
+"pi-acp-jetbrain": {
+  "command": "npx",
+  "args": ["-y", "--allow-git=all", "github:<owner>/pi-acp-jetbrain#<tag-or-commit>"],
+  "env": {}
 }
 ```
 
-npx works too. Pin the version so a later start cannot fetch a different release:
+- npm 12 refuses git installs unless you opt in with `--allow-git=all`. Older npm versions ignore the flag.
+- `npx` caches by ref. A branch name can keep running an older build after new pushes; pin a tag or commit hash per version you want to test.
 
-Replace `<version>` with the current release (see the badge):
+### From a tarball (another machine, no publishing)
 
-```json
-{
-  "agent_servers": {
-    "pi-acp-jetbrain": {
-      "command": "npx",
-      "args": ["-y", "pi-acp-jetbrain@<version>"],
-      "env": {}
-    }
-  }
-}
-```
-
-From source:
+Pack the adapter on a machine with the repository:
 
 ```bash
 npm install
-npm run build
+npm pack        # writes pi-acp-jetbrain-<version>.tgz
 ```
 
-Point the entry to `dist/index.js`:
+Copy the tarball to the other machine and install it with pi:
+
+```bash
+pi install npm:/full/path/to/pi-acp-jetbrain-<version>.tgz
+```
+
+pi installs the adapter and its dependencies under `~/.pi/agent/npm/`. Point IntelliJ at that copy with `"command": "/Users/<you>/.pi/agent/npm/node_modules/.bin/pi-acp"`. Keep the tarball where you installed it from: pi records that path. To update, copy a new tarball over it, run the same `pi install` again, and restart the IDE. `npm install -g ./pi-acp-jetbrain-<version>.tgz` works too and puts `pi-acp` on your PATH.
+
+The package version does not change between local builds. The startup block and `initialize` report the build revision (git commit), which tells builds apart.
+
+### From source
+
+```bash
+npm install     # also builds dist/
+```
+
+Use `"command": "node"` with `"args": ["/path/to/pi-acp-jetbrain/dist/index.js"]`.
+
+### Register the adapter in IntelliJ
+
+In the AI Chat tool window, open the menu in the upper-right corner and choose **Add Custom Agent**. IntelliJ creates `~/.jetbrains/acp.json` (the file and folder do not exist before) and opens it. A complete example:
 
 ```json
 {
+  "default_mcp_settings": {
+    "use_idea_mcp": true,
+    "use_custom_mcp": true
+  },
   "agent_servers": {
     "pi-acp-jetbrain": {
-      "command": "node",
-      "args": ["/path/to/pi-acp-jetbrain/dist/index.js"],
-      "env": {}
+      "command": "/opt/homebrew/bin/pi-acp",
+      "args": [],
+      "env": { "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" }
     }
   }
 }
 ```
 
-A development profile with a conservative tool subset:
+- `use_idea_mcp` is off by default in IntelliJ. Without it IntelliJ sends no IDE tools, and the IDE bridge has nothing to expose.
+- An IDE started from the Dock does not see your shell's PATH. `pi-acp`, `npx`, and pi's launcher all start with `#!/usr/bin/env node`, so the `PATH` in `env` must contain the folders of both `node` and `pi` (check with `which node` and `which pi`). A missing folder shows up as "ACP process exited unexpectedly. Exit code 127". With nvm or similar version managers, these folders include the Node version.
+- Without relying on PATH: use the full path to `node` as `command`, the adapter's `dist/index.js` as the argument, and set `PI_ACP_PI_COMMAND` to the full path of `pi`.
+- Restart the IDE after changing `acp.json`, and open a new chat after updating the adapter. IntelliJ reuses running agent processes and caches some agent UI until it restarts.
+
+A development profile with a conservative IDE tool subset:
 
 ```json
 {
@@ -166,17 +150,87 @@ A development profile with a conservative tool subset:
 
 `idea_mcp_allowed_tools` acts as a deny-all mask plus the named tools. Add tools as you need them.
 
+## Features
+
+### Sessions
+
+The adapter covers the session surface: `session/new`, `session/prompt`, `session/cancel`, `session/list`, `session/load`, `session/fork`, `session/resume`, `session/close`, `session/delete`. Pi keeps its own session files. The adapter keeps a small map at `~/.pi/pi-acp/session-map.json` so a load can reattach to the stored session.
+
+Reopening a chat (IntelliJ uses `session/load`) replays the history from pi's stored session, tool calls included, with the same titles and kinds as live.
+
+Each session starts with a pi startup block. Set `quietStartup: true` in pi settings to hide it.
+
+### Session settings
+
+Each session offers these options next to the chat input or in the model dialog:
+
+| Setting       | Values                                                              | Default            | Environment default                    |
+| ------------- | ------------------------------------------------------------------- | ------------------ | -------------------------------------- |
+| Model         | pi's available models                                               | pi's default       |                                        |
+| Thinking      | the levels the current model supports                               | pi's default       |                                        |
+| Tool approval | Off, Ask for edits & commands, Ask for everything                   | Off                | `PI_ACP_TOOL_APPROVAL=off\|edits\|all` |
+| File access   | Through the editor, Disk (only with client file read/write support) | Through the editor | `PI_ACP_FILE_ACCESS=disk\|editor`      |
+
+IntelliJ applies setting changes right before the next prompt.
+
+**Thinking** is a `thought_level` config option. It is not sent as session modes, so clients show one thinking selector; `session/set_mode` still accepts a level for older clients. The model selector works through a mapping from pi models to ACP provider info. Pi keeps provider credentials outside the RPC surface.
+
+**Tool approval.** pi has no approval step of its own. A bundled pi extension pauses each tool call that needs approval and asks the client through `session/request_permission`, attached to that tool call, with Allow, Always allow (that tool, for the rest of the session), and Reject. A rejected tool does not run. "Ask for edits & commands" lets read, grep, find, and ls run without asking.
+
+**File access.** Through the editor, pi's read, edit, and write tools go through the client's `fs/read_text_file` and `fs/write_text_file`: pi sees unsaved changes, and its edits land in the editor, where you can undo them. In IntelliJ these writes also reach the disk, so later shell commands see them. Writing a file through the editor saves that file, including unsaved changes you had in it. Search tools (grep, find, ls), shell commands, and images keep using the disk.
+
+### Streaming and tool calls
+
+Assistant text streams as `agent_message_chunk`. Reasoning streams as `agent_thought_chunk` when the provider sends it. Every chunk carries a `messageId`: the thinking and text of one pi reply share one, and each adapter notice and replayed message gets its own.
+
+Tool runs map to `tool_call` and `tool_call_update` with the pi tool `name`, an ACP kind, and a readable title built from the arguments: `Read src/a.ts (lines 10–14)`, `Search for "TODO" in src`, `List src`, `Edit README.md`. Bash calls use the command as the title and stream their output as a terminal. Extension and IDE tools keep their pi name as the title.
+
+pi enables only read, bash, edit, and write by default. Add `"defaultTools": ["+grep", "+find", "+ls"]` to `~/.pi/agent/settings.json` for dedicated search tools; otherwise pi searches through bash.
+
+Edit events carry a file location when pi reports a path. The adapter resolves relative paths against the session working directory. For text edits it finds the changed line from one unique match and reports a structured diff.
+
+### Turn outcomes
+
+A turn ends with `max_tokens` when the model hit its output limit and `cancelled` when it was stopped. A failed turn (provider error, pi crash) returns a JSON-RPC error with pi's message; IntelliJ shows it above the input box. Errors pi retries on its own, and context overflows it recovers from by compacting, don't end the turn: the chat shows retry and compaction notices instead.
+
+### Usage and cost
+
+When a turn settles the adapter makes one `get_session_stats` call and reports two things from it. Context window occupancy from pi `contextUsage`, with the cumulative session cost in USD, goes out as an ACP `usage_update` before the prompt resolves. Cumulative token use and cost go on the unstable `usage` field of the prompt response. The call waits at most 1 second. If it fails or times out, the turn still ends and both reports are left out. A turn that ends without settling (pi error, process exit) fetches the stats once for the `usage` field only.
+
+The adapter also sends `usage_update` on `session/new` and `session/load`, and after a model switch. Right after compaction pi has no trusted token count, so the client keeps the previous value.
+
+### Input requests
+
+Text input requests from pi extensions use ACP elicitation when the client declares form elicitation in `initialize`; otherwise they are cancelled with a visible notice. Requests that fit permissions route through ACP permissions. An editor request shows a cancellation notice because elicitation forms hold primitive fields only.
+
+### Slash commands
+
+Slash commands load file-based prompts from pi and a set of built-ins: `/compact`, `/export`, `/session`, `/name`, `/queue`, `/changelog`, `/steering`, `/follow-up`. Skills appear as `/skill:<name>` when enabled in pi settings. `/compact` on a session too small to compact answers in the chat.
+
+The local tree carries pi developer tooling: 9 prompt commands, 101 skill files (91 leaves in 10 packs), and 12 format templates under `.pi/`. These checks run in the development tree and skip on clean CI checkouts.
+
+## JetBrains IDE bridge
+
+IntelliJ sends its built-in MCP server descriptor with each chat (with `use_idea_mcp` enabled). The adapter exposes those IDE tools to pi as `ide_<server>_<tool>` extension tools.
+
+The bridge opens a direct MCP-over-SSE client against `http://127.0.0.1:<IJ_MCP_SERVER_PORT>/sse` when the descriptor carries that port. It starts the stdio child only when that endpoint is unreachable.
+
+Two allowlists guard the IDE tools. The IDE side reads `idea_mcp_allowed_tools` from `~/.jetbrains/acp.json`. An omitted key means AllowAll in the installed build. The adapter side deny-lists `execute_tool` and every `xdebug_*` name. Set `PI_ACP_IDE_EXTRA_TOOLS` with a comma separated list of remote names to re-allow tools you reviewed.
+
+The session catalog never changes. After you edit IntelliJ MCP settings or the allowlist, open a new chat.
+
 ## Environment variables
 
 | Variable                                | Effect                                                                                                                                               |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PI_ACP_PI_COMMAND`                     | Path to the pi executable. Default: `pi`.                                                                                                            |
-| `PI_ACP_DEBUG_BRIDGE=1`                 | Log the sanitized `session/new` MCP descriptor to stderr. IntelliJ writes that stderr into `idea.log`.                                               |
-| `PI_ACP_DEBUG_ACP=1` or a file path     | Log incoming ACP requests and outgoing errors to `~/.pi/pi-acp/acp-debug.log` (or the given file). Prompt text, images, env and headers are omitted. |
 | `PI_ACP_TOOL_APPROVAL=off\|edits\|all`  | Default tool approval mode for new sessions. Default: `off`.                                                                                         |
 | `PI_ACP_FILE_ACCESS=disk\|editor`       | Default file access for read/edit/write in new sessions, for clients with fs support. Default: `editor`.                                             |
+| `PI_ACP_DEBUG_ACP=1` or a file path     | Log incoming ACP requests and outgoing errors to `~/.pi/pi-acp/acp-debug.log` (or the given file). Prompt text, images, env and headers are omitted. |
+| `PI_ACP_DEBUG_BRIDGE=1`                 | Log the sanitized `session/new` MCP descriptor to stderr. IntelliJ writes that stderr into `idea.log`.                                               |
 | `PI_ACP_ENABLE_EMBEDDED_CONTEXT=true`   | Advertise `embeddedContext` support.                                                                                                                 |
 | `PI_ACP_ENFORCE_IDE_INSPECT=0`          | Disable the inspection gate that runs after each turn.                                                                                               |
+| `PI_ACP_ENFORCE_IDE_MUTATIONS=0`        | Disable the mutation provenance gate. See the IntelliJ-first coding mode section.                                                                    |
 | `PI_ACP_IDE_MODE=off\|prefer\|required` | IntelliJ-first coding mode for the session. Default: `off`. See the IntelliJ-first coding mode section.                                              |
 | `PI_ACP_IDE_INSPECT_DIR`                | Move inspection reports out of the project tree.                                                                                                     |
 | `PI_ACP_SESSION_MAP`                    | Override the session map path. Default: `~/.pi/pi-acp/session-map.json`.                                                                             |
@@ -199,6 +253,8 @@ Bash stays available in `prefer` for Git, tests, builds, and diagnostics. Unrest
 In `prefer` and `required` with an active catalog, direct Fabric/Schema file mutations (`schema.commit`, `pi.write`, `pi.edit` inside `fabric_exec`) are blocked before execution by a `tool_call` gate. Mutations must flow through the IDE tools (`ide_idea_apply_patch`, `ide_idea_create_new_file`, rename, reformat), which open affected files and confine patch/path arguments to the project root. Read-only Fabric code (`pi.read`, `pi.grep`, IDE tool calls) is unaffected. This closes the extension-tool bypass of the active-set filter; Bash remains an intentional, documented exception.
 
 A second layer runs after each turn: the extension reports paths applied by successful IDE mutation tools over the authenticated IPC (`mutations_applied`), and the adapter compares those against files changed during the turn (git status merged with turn-touched tool paths). Files that changed without an IDE mutation event are surfaced as `Mutation provenance` violations in the chat and recorded under `PromptResponse._meta.piAcp.mutationViolations`. Disable with `PI_ACP_ENFORCE_IDE_MUTATIONS=0`. Deleted files and files committed mid-turn by an external auto-commit watcher are not detected by this layer (same git-status semantics as the inspection gate).
+
+The File access setting is the protocol-standard way to route pi's read, edit, and write through the editor in any ACP client; this mode goes further and replaces pi's native tools with IntelliJ's MCP tools.
 
 Set the variable for the adapter process, for example in `~/.jetbrains/acp.json`:
 
@@ -226,15 +282,16 @@ ACP clients can start the same command from their auth UI.
 ## Development
 
 ```bash
-npm install
-npm run dev        # run from src with tsx
+npm install          # also builds dist/
+npm run dev          # run from src with tsx
 npm run build
 npm run lint
-npm run test
+npm run test         # unit, component, and end-to-end tests
 npm run typecheck
 npm run format
-npm run smoke      # core stdio smoke tests
-npm run smoke:full # full matrix; run this before a release
+npm run check:pack   # pack, install into a clean prefix, check the installed adapter starts
+npm run smoke        # core stdio smoke tests against your real pi and model
+npm run smoke:full   # full matrix; run this before a release
 node scripts/check.mjs
 ```
 
@@ -242,8 +299,17 @@ Code layout:
 
 - `src/acp/` holds the ACP server and translation.
 - `src/pi-rpc/` holds the pi subprocess wrapper.
+- `src/pi-extension/` holds the pi extensions the adapter loads into each session: the IDE bridge, tool approval, and editor file access.
 
-CI: `check.yml` runs the canonical check, tests, lint, typecheck, and build on Node 20 and 24. `qodana_code_quality.yml` runs a Qodana Cloud scan and needs a `QODANA_TOKEN` repository secret. CI runs on Linux. Windows paths exist in the code and stay untested.
+Tests:
+
+- `test/e2e/` runs the real adapter against the real pi binary from `node_modules`, with a scripted model (pi-ai's faux provider, loaded by `test/e2e/fixtures/scripted-model.ts`). Scenarios script text, thinking, tool calls, stop reasons, and errors; no network or API keys. Start a fix with a failing scenario here.
+- `test/component/` and `test/unit/` cover edge cases with a fake pi process. Its events are type-checked against pi's exported event types, so a renamed pi event fails `npm run typecheck`.
+- `npm run smoke:full` uses your own pi providers and is for release checks.
+
+To see what a client actually sends, set `PI_ACP_DEBUG_ACP=1` and read `~/.pi/pi-acp/acp-debug.log`.
+
+CI: `check.yml` runs the canonical check, tests, lint, typecheck, build, and the packaging check on Node 22 and 24. `qodana_code_quality.yml` runs a Qodana Cloud scan and needs a `QODANA_TOKEN` repository secret. CI runs on Linux. Windows paths exist in the code and stay untested.
 
 ## Releasing
 
@@ -275,11 +341,16 @@ or place unnecessary secrets in the adapter environment.
 filesystem sandbox: unrestricted Bash stays available, and the post-turn gates report
 violations without rolling back changes.
 
-The adapter does not expose ACP filesystem or terminal delegation. Pi reads files and runs commands locally.
+Tool approval covers tool calls pi makes. Calls one tool makes on behalf of another (pi's optional codemode) carry ids the client never sees as tool calls, so their approval prompt is not attached to a visible call.
 
-`providers/set` and `providers/disable` return a method-not-found error. Pi configures providers outside the RPC surface.
+### Protocol coverage
 
-The ACP plan surface stays unwired. The installed SDK does not define a plan method.
+- Terminals: the adapter does not delegate shell commands to the client (IntelliJ declares no terminal support). Pi runs commands locally.
+- File access through the editor covers read, edit, and write only; search tools and shell commands use the disk.
+- `providers/set` and `providers/disable` return a method-not-found error. Pi configures providers outside the RPC surface.
+- No plan updates: pi has no plan concept.
+- No `logout` and no additional workspace roots: pi's RPC surface has neither.
+- The IDE bridge speaks the MCP-over-ACP protocol generation with `mcp/connect`. ACP SDK 1.x defines a newer, stateless one; current IntelliJ builds accept the older form.
 
 Debugger tools register only while an IDE debug session is live. Start a debug session and open a new chat to see them.
 
