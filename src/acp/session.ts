@@ -309,7 +309,7 @@ export class SessionManager {
 
   get(sessionId: string): PiAcpSession {
     const s = this.sessions.get(sessionId)
-    if (!s) throw RequestError.invalidParams(`Unknown sessionId: ${sessionId}`)
+    if (!s) throw RequestError.invalidParams(undefined, `Unknown sessionId: ${sessionId}`)
     return s
   }
 

@@ -274,7 +274,7 @@ export class PiAcpAgent implements ACPAgent {
     const restorePromise = (async () => {
       const stored = this.findStoredSession(sessionId)
       if (!stored) {
-        throw RequestError.invalidParams(`Unknown sessionId: ${sessionId}`)
+        throw RequestError.invalidParams(undefined, `Unknown sessionId: ${sessionId}`)
       }
 
       const cwd = opts?.cwd ?? stored.cwd
@@ -413,7 +413,7 @@ export class PiAcpAgent implements ACPAgent {
 
   async newSession(params: NewSessionRequest) {
     if (!isAbsolute(params.cwd)) {
-      throw RequestError.invalidParams(`cwd must be an absolute path: ${params.cwd}`)
+      throw RequestError.invalidParams(undefined, `cwd must be an absolute path: ${params.cwd}`)
     }
 
     this.lastSessionCwd = params.cwd
@@ -1197,12 +1197,12 @@ export class PiAcpAgent implements ACPAgent {
 
   async unstable_forkSession(params: ForkSessionRequest): Promise<ForkSessionResponse> {
     if (!isAbsolute(params.cwd)) {
-      throw RequestError.invalidParams(`cwd must be an absolute path: ${params.cwd}`)
+      throw RequestError.invalidParams(undefined, `cwd must be an absolute path: ${params.cwd}`)
     }
 
     const source = this.findStoredSession(params.sessionId)
     if (!source?.sessionFile) {
-      throw RequestError.invalidParams(`Unknown sessionId: ${params.sessionId}`)
+      throw RequestError.invalidParams(undefined, `Unknown sessionId: ${params.sessionId}`)
     }
 
     // pi's RPC `fork` branches the loaded session at a user-message entry into a
@@ -1329,12 +1329,12 @@ export class PiAcpAgent implements ACPAgent {
 
   async resumeSession(params: ResumeSessionRequest): Promise<ResumeSessionResponse> {
     if (!isAbsolute(params.cwd)) {
-      throw RequestError.invalidParams(`cwd must be an absolute path: ${params.cwd}`)
+      throw RequestError.invalidParams(undefined, `cwd must be an absolute path: ${params.cwd}`)
     }
 
     const stored = this.findStoredSession(params.sessionId)
     if (!stored) {
-      throw RequestError.invalidParams(`Unknown sessionId: ${params.sessionId}`)
+      throw RequestError.invalidParams(undefined, `Unknown sessionId: ${params.sessionId}`)
     }
 
     const session = await this.restoreSession(params.sessionId, {
@@ -1414,7 +1414,7 @@ export class PiAcpAgent implements ACPAgent {
 
   async loadSession(params: LoadSessionRequest): Promise<LoadSessionResponse> {
     if (!isAbsolute(params.cwd)) {
-      throw RequestError.invalidParams(`cwd must be an absolute path: ${params.cwd}`)
+      throw RequestError.invalidParams(undefined, `cwd must be an absolute path: ${params.cwd}`)
     }
 
     // If the client is re-loading a session that is already active, tear down the existing
@@ -1425,7 +1425,7 @@ export class PiAcpAgent implements ACPAgent {
 
     const stored = this.findStoredSession(params.sessionId)
     if (!stored) {
-      throw RequestError.invalidParams(`Unknown sessionId: ${params.sessionId}`)
+      throw RequestError.invalidParams(undefined, `Unknown sessionId: ${params.sessionId}`)
     }
 
     const enableSkillCommands = getEnableSkillCommands(params.cwd)
@@ -1681,7 +1681,7 @@ export class PiAcpAgent implements ACPAgent {
 
     const mode = params.modeId
     if (typeof mode !== 'string' || mode.length === 0) {
-      throw RequestError.invalidParams('Expected nonempty string modeId')
+      throw RequestError.invalidParams(undefined, 'Expected nonempty string modeId')
     }
 
     await session.proc.setThinkingLevel(mode)
@@ -1697,7 +1697,7 @@ export class PiAcpAgent implements ACPAgent {
     let modelChanged = false
 
     if (typeof params.value !== 'string') {
-      throw RequestError.invalidParams(`Expected string value for config option: ${configId}`)
+      throw RequestError.invalidParams(undefined, `Expected string value for config option: ${configId}`)
     }
 
     if (configId === MODEL_CONFIG_ID) {
@@ -1705,7 +1705,7 @@ export class PiAcpAgent implements ACPAgent {
       modelChanged = true
     } else if (configId === THOUGHT_LEVEL_CONFIG_ID) {
       if (params.value.length === 0) {
-        throw RequestError.invalidParams('Expected nonempty thinking level')
+        throw RequestError.invalidParams(undefined, 'Expected nonempty thinking level')
       }
 
       await session.proc.setThinkingLevel(params.value)
@@ -1714,7 +1714,7 @@ export class PiAcpAgent implements ACPAgent {
       if (!mode) throw RequestError.invalidParams(undefined, `Unknown tool approval mode: ${params.value}`)
       await session.setToolApprovalMode(mode)
     } else {
-      throw RequestError.invalidParams(`Unknown config option: ${configId}`)
+      throw RequestError.invalidParams(undefined, `Unknown config option: ${configId}`)
     }
 
     const configOptions = await emitConfigOptionsUpdate(this.conn, session)
@@ -1952,7 +1952,7 @@ async function setSessionModel(proc: PiRpcProcess, requestedModelId: string): Pr
   }
 
   if (!provider || !modelId) {
-    throw RequestError.invalidParams(`Unknown modelId: ${requestedModelId}`)
+    throw RequestError.invalidParams(undefined, `Unknown modelId: ${requestedModelId}`)
   }
 
   await proc.setModel(provider, modelId)

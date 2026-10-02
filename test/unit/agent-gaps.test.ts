@@ -171,11 +171,11 @@ test('PiAcpAgent: unstable_forkSession rejects unknown sessions and relative cwd
   const { agent } = buildAgent({ stored: null })
   await assert.rejects(
     agent.unstable_forkSession({ sessionId: 'nope', cwd: '/tmp/x' } as any),
-    err => (err as any).data === 'Unknown sessionId: nope'
+    err => (err as Error).message === 'Invalid params: Unknown sessionId: nope'
   )
   await assert.rejects(
     agent.unstable_forkSession({ sessionId: 'x', cwd: 'relative' } as any),
-    err => (err as any).data === 'cwd must be an absolute path: relative'
+    err => (err as Error).message === 'Invalid params: cwd must be an absolute path: relative'
   )
 })
 
@@ -231,7 +231,7 @@ test('PiAcpAgent: resumeSession rejects unknown session ids', async () => {
   const { agent } = buildAgent({ stored: null })
   await assert.rejects(
     agent.resumeSession({ sessionId: 'nope', cwd: '/tmp/x' } as any),
-    err => (err as any).data === 'Unknown sessionId: nope'
+    err => (err as Error).message === 'Invalid params: Unknown sessionId: nope'
   )
 })
 
