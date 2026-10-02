@@ -57,3 +57,23 @@ test('PiRpcProcess stderr tail is bounded', async () => {
   proc.dispose()
   await proc.waitForExit()
 })
+
+test('PiRpcProcess: talking to a pi that exited reports its exit status and stderr, not a stream error', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pi-acp-exits-'))
+  const executable = writeNodeExecutable(
+    dir,
+    'crashing-pi',
+    'process.stderr.write("Error: something pi needs is missing\\n")\nprocess.exit(1)\n'
+  )
+
+  const proc = await PiRpcProcess.spawn({ cwd: dir, piCommand: executable, requestTimeoutMs: 2_000 })
+  await waitUntil(() => proc.stderrTailLines().length > 0)
+  await new Promise(r => setTimeout(r, 200))
+
+  await assert.rejects(proc.getState(), (err: Error) => {
+    assert.match(err.message, /pi process exited \(code=1/)
+    assert.match(err.message, /something pi needs is missing/)
+    assert.doesNotMatch(err.message, /stream was destroyed|EPIPE/)
+    return true
+  })
+})

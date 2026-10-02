@@ -123,6 +123,7 @@ export class PiRpcProcess {
   private eventHandlers: Array<(ev: PiRpcEvent) => void> = []
   private readonly preludeLines: string[] = []
   private readonly stderrTail: string[] = []
+  private exitStatus: { code: number | null; signal: NodeJS.Signals | null } | null = null
   private readonly exitHandlers: Array<(code: number | null, signal: NodeJS.Signals | null) => void> = []
 
   /** Bounded tail of retained child stderr for diagnostics; the raw stream stays untouched. */
@@ -169,7 +170,8 @@ export class PiRpcProcess {
     })
 
     child.on('exit', (code, signal) => {
-      const err = new Error(`pi process exited (code=${code}, signal=${signal})`)
+      this.exitStatus = { code, signal }
+      const err = this.exitedError()
       for (const [, p] of this.pending) p.reject(err)
       this.pending.clear()
       for (const h of this.exitHandlers) h(code, signal)
@@ -469,19 +471,34 @@ export class PiRpcProcess {
     })
   }
 
+  /**
+   * Error for talking to a pi that has exited: its exit status and the end of its stderr, so
+   * clients see why pi stopped instead of a bare stream error.
+   */
+  private exitedError(): Error {
+    const status = this.exitStatus ? `code=${this.exitStatus.code}, signal=${this.exitStatus.signal}` : 'stdin closed'
+    const tail = this.stderrTailLines(8).join('\n')
+    return new Error(`pi process exited (${status})${tail ? `\nstderr:\n${tail}` : ''}`)
+  }
+
   private writeLine(line: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
+      if (this.exitStatus || this.child.stdin.destroyed) {
+        reject(this.exitedError())
+        return
+      }
       try {
         this.child.stdin.write(line, error => {
           if (error) {
-            reject(error)
+            // Writing failed because pi went away (EPIPE, stream destroyed): report why it exited.
+            reject(this.exitStatus || this.child.stdin.destroyed ? this.exitedError() : error)
             return
           }
 
           resolve()
         })
       } catch (error: unknown) {
-        reject(error)
+        reject(this.exitStatus || this.child.stdin.destroyed ? this.exitedError() : error)
       }
     })
   }
