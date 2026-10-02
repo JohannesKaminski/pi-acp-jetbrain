@@ -109,6 +109,7 @@ In the AI Chat tool window, open the menu in the upper-right corner and choose *
 - `pi-acp`, `npx`, and pi's launcher all start with `#!/usr/bin/env node`, so the agent process needs the folders of both `node` and `pi` on its PATH. Depending on how the IDE was started (desktop launcher, Dock, JetBrains Toolbox), it may not see the PATH your shell sets up in `.bashrc`, `.zshrc`, or `.profile`. Setting `PATH` in `env` makes it explicit, but it replaces the inherited PATH rather than adding to it: list every folder the adapter needs. A missing folder shows up as "ACP process exited unexpectedly. Exit code 127".
 - Typical folders: `/usr/local/bin` or `/usr/bin` for system packages, `/opt/homebrew/bin` for Homebrew on Apple silicon, and `~/.nvm/versions/node/<version>/bin` (written out absolutely) for nvm; other version managers have similar versioned folders.
 - Without relying on PATH: use the full path to `node` as `command`, the adapter's `dist/index.js` as the argument, and set `PI_ACP_PI_COMMAND` to the full path of `pi`.
+- On Windows, `pi`, `pi-acp`, and `npx` are `.cmd` launchers: find them with `where pi-acp`, `where node`, and `where pi`, and separate `PATH` entries with `;`.
 - Restart the IDE after changing `acp.json`, and open a new chat after updating the adapter. IntelliJ reuses running agent processes and caches some agent UI until it restarts.
 
 A development profile with a conservative IDE tool subset:
@@ -316,7 +317,7 @@ Tests:
 
 To see what a client actually sends, set `PI_ACP_DEBUG_ACP=1` and read `~/.pi/pi-acp/acp-debug.log`.
 
-CI: `check.yml` runs the canonical check, tests, lint, typecheck, build, and the packaging check on Node 22 and 24. `qodana_code_quality.yml` runs a Qodana Cloud scan and needs a `QODANA_TOKEN` repository secret. CI runs on Linux. Windows paths exist in the code and stay untested.
+CI: `check.yml` runs the canonical check, tests, lint, typecheck, build, and the packaging check on Linux (Node 22 and 24) and Windows (Node 24). `qodana_code_quality.yml` runs a Qodana Cloud scan and needs a `QODANA_TOKEN` repository secret.
 
 ## Releasing
 

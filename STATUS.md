@@ -137,7 +137,6 @@ so the `.iml` exclusions and project dictionary load, then re-run Whole Project
 
 - Confirm one `ide_*` tool call in IntelliJ on the SDK 1.6 build (discovery already verified; open risk below).
 - Start a fresh IntelliJ chat after the next dist rebuild and complete the F-033 checklist (new PID, build revision match, cancel/restore/shutdown).
-- Add Windows CI coverage (check.yml currently runs Linux only; Windows paths and named-pipe logic stay untested).
 
 ## 2026-10-01 open risk: IDE bridge after ACP SDK 1.6 (discovery verified, tool call pending)
 
@@ -207,6 +206,16 @@ when hello_ack arrives during extension loading`).
   The classic-token guard and `NODE_AUTH_TOKEN` override added in `d68f4e0`/`c593776` were
   removed from both `npm-publish.yml` and `release.yml` (`6bc5837`) — they contradicted the
   README OIDC path and failed once the secret was deleted.
+
+## 2026-10-02 Windows CI
+
+`check.yml` now also runs on `windows-latest` (Node 24). The first run found real
+Windows bugs, all fixed: stopping pi or stdio MCP servers killed only the `.cmd`
+launcher's cmd.exe (pi kept running), `pi --version` and npm lookups ran `.cmd`
+launchers without a shell (Node refuses), npx-launched MCP servers failed (a
+`.cmd` regex never matched), inspection-gate paths used backslashes, and the
+session-map lock treated Windows' EPERM under contention as fatal. Actions moved
+to `checkout@v7`/`setup-node@v7` (Node 24 runtime).
 
 ## Gotchas
 
