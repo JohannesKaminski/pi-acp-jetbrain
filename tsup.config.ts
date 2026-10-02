@@ -22,7 +22,8 @@ export default defineConfig({
     'src/index.ts',
     'src/pi-extension/acp-mcp-bridge.ts',
     'src/pi-extension/tool-approval.ts',
-    'src/pi-extension/editor-files.ts'
+    'src/pi-extension/editor-files.ts',
+    'src/pi-extension/client-hints.ts'
   ],
   // Never bundle pi-coding-agent. Extensions run inside the host pi and use its copy; the adapter
   // must not import it at runtime at all (it's only a devDependency, absent in installs).

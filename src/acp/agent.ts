@@ -50,7 +50,7 @@ import { toolKind, toolTitle } from './translate/tool-call.js'
 import { TOOL_APPROVAL_CONFIG_ID } from './tool-approval.js'
 import { FILE_ACCESS_CONFIG_ID } from './file-access.js'
 import { parseFileAccessMode } from '../pi-extension/editor-files-protocol.js'
-import { sessionExtensionPaths } from './session-extensions.js'
+import { sessionExtensionEnv, sessionExtensionPaths } from './session-extensions.js'
 import { parseToolApprovalMode } from '../pi-extension/tool-approval.js'
 import {
   bashCommand,
@@ -298,7 +298,7 @@ export class PiAcpAgent implements ACPAgent {
           sessionPath: stored.sessionFile,
           piCommand: process.env.PI_ACP_PI_COMMAND,
           extensionPaths: sessionExtensionPaths(bridgeSettings.extensionPaths),
-          env: bridgeSettings.env
+          env: { ...bridgeSettings.env, ...sessionExtensionEnv(this.sessions.clientCapabilities) }
         })
       } catch (e: unknown) {
         await bridge.dispose()
@@ -1234,7 +1234,7 @@ export class PiAcpAgent implements ACPAgent {
         sessionPath: source.sessionFile,
         piCommand: process.env.PI_ACP_PI_COMMAND,
         extensionPaths: sessionExtensionPaths(bridgeSettings.extensionPaths),
-        env: bridgeSettings.env
+        env: { ...bridgeSettings.env, ...sessionExtensionEnv(this.sessions.clientCapabilities) }
       })
     } catch (e: unknown) {
       await bridge.dispose()

@@ -35,7 +35,7 @@ import {
 } from './translate/bash.js'
 import { toolResultImages, toolResultToText, withoutImageData } from './translate/pi-tools.js'
 import { toolKind, toolTitle } from './translate/tool-call.js'
-import { sessionExtensionPaths } from './session-extensions.js'
+import { sessionExtensionEnv, sessionExtensionPaths } from './session-extensions.js'
 import { defaultToolApprovalMode, toolApprovalConfigOption, toolApprovalPermissionOptions } from './tool-approval.js'
 import { defaultFileAccessMode, fileAccessConfigOption } from './file-access.js'
 import {
@@ -290,7 +290,7 @@ export class SessionManager {
         cwd: params.cwd,
         piCommand: params.piCommand,
         extensionPaths: sessionExtensionPaths(params.extensionPaths),
-        env: params.env
+        env: { ...params.env, ...sessionExtensionEnv(this.clientCapabilities) }
       })
     } catch (e) {
       if (e instanceof PiRpcSpawnError) {

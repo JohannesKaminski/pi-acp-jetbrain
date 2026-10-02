@@ -2,18 +2,31 @@
 // `scripted/scripted` and answers each model request with the next entry from
 // the JSON script named by PI_ACP_E2E_SCRIPT. Also registers test-only tools that
 // exercise pi's extension UI (e.g. `ask_user` → ctx.ui.input).
-import { readFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 import {
   fauxAssistantMessage,
   fauxProvider,
   fauxText,
   fauxThinking,
   fauxToolCall,
+  type Context,
   type FauxContentBlock
 } from '@earendil-works/pi-ai'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import type { ScriptedModelScript, ScriptedBlock } from './script.js'
+
+/** The system prompt of a model request: `systemPrompt`, or pi's system-role messages (pi 1.0). */
+function systemPromptOf(context: Context): string {
+  const fromMessages = context.messages
+    .filter(m => (m as { role: string }).role === 'system')
+    .map(m => {
+      const content = (m as { content?: unknown }).content
+      if (typeof content === 'string') return content
+      return Array.isArray(content) ? content.map(b => (b as { text?: string }).text ?? '').join('') : ''
+    })
+  return [context.systemPrompt ?? '', ...fromMessages].filter(Boolean).join('\n')
+}
 
 function toBlock(block: ScriptedBlock): FauxContentBlock {
   if ('text' in block) return fauxText(block.text)
@@ -38,13 +51,16 @@ export default function (pi: ExtensionAPI) {
     ]
   })
 
+  // With PI_ACP_E2E_CAPTURE set, each model request's system prompt is appended there as a JSON line.
+  const capture = process.env.PI_ACP_E2E_CAPTURE
   faux.setResponses(
-    script.responses.map(r =>
-      fauxAssistantMessage(r.content.map(toBlock), {
+    script.responses.map(r => (context: Context) => {
+      if (capture) appendFileSync(capture, `${JSON.stringify({ systemPrompt: systemPromptOf(context) })}\n`)
+      return fauxAssistantMessage(r.content.map(toBlock), {
         stopReason: r.stopReason ?? (r.content.some(b => 'tool' in b) ? 'toolUse' : 'stop'),
         errorMessage: r.errorMessage
       })
-    )
+    })
   )
 
   pi.registerProvider(faux.provider)

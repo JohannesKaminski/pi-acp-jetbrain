@@ -159,7 +159,7 @@ The adapter covers the session surface: `session/new`, `session/prompt`, `sessio
 
 Reopening a chat (IntelliJ uses `session/load`) replays the history from pi's stored session, tool calls included, with the same titles and kinds as live.
 
-When pi names the session, the chat title follows; when pi changes the thinking level on its own (an extension, `/thinking`), the thinking selector follows; and a failing pi extension shows up as a notice in the chat instead of failing silently.
+Clients that render Mermaid diagrams (IntelliJ declares this) get a hint in pi's system prompt, so pi can answer with diagrams. When pi names the session, the chat title follows; when pi changes the thinking level on its own (an extension, `/thinking`), the thinking selector follows; and a failing pi extension shows up as a notice in the chat instead of failing silently.
 
 Each session starts with a startup block (adapter build, pi version, loaded context, skills, prompts, and extensions). It follows pi's `quietStartup` setting: `true` hides it, and `"header"` keeps the version lines and hides the listing. An update notice and IDE bridge problems still show.
 
@@ -302,7 +302,7 @@ Code layout:
 
 - `src/acp/` holds the ACP server and translation.
 - `src/pi-rpc/` holds the pi subprocess wrapper.
-- `src/pi-extension/` holds the pi extensions the adapter loads into each session: the IDE bridge, tool approval, and editor file access.
+- `src/pi-extension/` holds the pi extensions the adapter loads into each session: the IDE bridge, tool approval, editor file access, and client hints.
 
 Tests:
 
