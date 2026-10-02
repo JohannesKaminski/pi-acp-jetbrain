@@ -1344,7 +1344,8 @@ export class PiAcpSession {
             ? (await this.conn.readTextFile({ sessionId: this.sessionId, path: pointer.path })).content
             : await readFile(pointer.path, 'utf8')
           const text = renderSelections(content, pointer, this.cwd)
-          return text ? ({ type: 'text', text } as T) : block
+          // Start on its own line: the prompt converter appends blocks directly to each other.
+          return text ? ({ type: 'text', text: `\n\n${text}` } as T) : block
         } catch {
           return block
         }

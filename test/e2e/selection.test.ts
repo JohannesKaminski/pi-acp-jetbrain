@@ -64,6 +64,7 @@ test('e2e: an IntelliJ selection pointer reaches pi as the selected text with it
   const text = await userTextFor({ disk, start, end })
 
   assert.match(text, /Selection in notes\.txt, lines 2–3/)
+  assert.match(text, /\n\nSelection in notes\.txt/, 'the selection starts on its own line after the file link')
   assert.match(text, /line two – ü\nline three/)
   assert.doesNotMatch(text, /Byte offsets/, 'the raw pointer is replaced')
 })
