@@ -33,7 +33,7 @@ import {
   bashTerminalOutputMeta,
   isBashTool
 } from './translate/bash.js'
-import { toolResultToText } from './translate/pi-tools.js'
+import { toolResultImages, toolResultToText, withoutImageData } from './translate/pi-tools.js'
 import { toolKind, toolTitle } from './translate/tool-call.js'
 import { sessionExtensionPaths } from './session-extensions.js'
 import { defaultToolApprovalMode, toolApprovalConfigOption, toolApprovalPermissionOptions } from './tool-approval.js'
@@ -1108,13 +1108,15 @@ export class PiAcpSession {
         if (!content && !hasStructuredDiff && text) {
           content = [{ type: 'content', content: { type: 'text', text } }] satisfies ToolCallContent[]
         }
+        const images = toolResultImages(result)
+        if (images.length > 0) content = [...(content ?? []), ...images]
 
         this.emit({
           sessionUpdate: 'tool_call_update',
           toolCallId,
           status: isError ? 'failed' : 'completed',
           content,
-          ...(hasStructuredDiff ? {} : { rawOutput: result })
+          ...(hasStructuredDiff ? {} : { rawOutput: withoutImageData(result) })
         })
 
         this.cleanupToolCall(toolCallId)

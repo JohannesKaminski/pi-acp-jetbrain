@@ -1,3 +1,39 @@
+import type { ToolCallContent } from '@agentclientprotocol/sdk'
+
+type ImageBlock = { type: 'image'; data: string; mimeType: string }
+
+function isImageBlock(block: unknown): block is ImageBlock {
+  const b = block as Partial<ImageBlock> | null
+  return b?.type === 'image' && typeof b.data === 'string' && typeof b.mimeType === 'string'
+}
+
+/**
+ * Image blocks of a pi tool result as ACP tool-call content: pi's read tool on an image file,
+ * codemode's generated images (pi 1.0 `models.generateImages()`), extension tools.
+ */
+export function toolResultImages(result: unknown): ToolCallContent[] {
+  const content = (result as { content?: unknown } | null)?.content
+  if (!Array.isArray(content)) return []
+  return content
+    .filter(isImageBlock)
+    .map(block => ({ type: 'content', content: { type: 'image', data: block.data, mimeType: block.mimeType } }))
+}
+
+/**
+ * The result with image bytes replaced by a size note, for `rawOutput`: the images already go out
+ * as tool-call content, so this avoids sending every image twice.
+ */
+export function withoutImageData<T>(result: T): T {
+  const content = (result as { content?: unknown } | null)?.content
+  if (!Array.isArray(content) || !content.some(isImageBlock)) return result
+  return {
+    ...result,
+    content: content.map(block =>
+      isImageBlock(block) ? { ...block, data: `[${block.data.length} base64 chars, sent as image content]` } : block
+    )
+  }
+}
+
 export function toolResultToText(result: unknown): string {
   if (!result) return ''
 

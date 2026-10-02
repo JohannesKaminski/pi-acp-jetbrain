@@ -18,6 +18,7 @@ import {
   type SetSessionConfigOptionRequest,
   type SetSessionConfigOptionResponse,
   type SessionNotification,
+  type ToolCallContent,
   type SetSessionModeRequest,
   type SetSessionModeResponse,
   type DeleteSessionRequest,
@@ -44,7 +45,7 @@ import { listPiSessions, findPiSession } from './pi-sessions.js'
 import { normalizePiAssistantText, normalizePiMessageText } from './translate/pi-messages.js'
 import { sessionStatsToAcpUsage } from './usage.js'
 import { piModelsToProviderInfo } from './providers.js'
-import { toolResultToText } from './translate/pi-tools.js'
+import { toolResultImages, toolResultToText, withoutImageData } from './translate/pi-tools.js'
 import { toolKind, toolTitle } from './translate/tool-call.js'
 import { TOOL_APPROVAL_CONFIG_ID } from './tool-approval.js'
 import { FILE_ACCESS_CONFIG_ID } from './file-access.js'
@@ -1553,19 +1554,23 @@ export class PiAcpAgent implements ACPAgent {
             kind: toolKind(toolName),
             status: 'completed',
             rawInput: args ?? null,
-            rawOutput: m
+            rawOutput: withoutImageData(m)
           }
         })
 
         const text = toolResultToText(m)
+        const replayed: ToolCallContent[] = [
+          ...(text ? [{ type: 'content' as const, content: { type: 'text' as const, text } }] : []),
+          ...toolResultImages(m)
+        ]
         await this.sendUpdate({
           sessionId: session.sessionId,
           update: {
             sessionUpdate: 'tool_call_update',
             toolCallId,
             status: isError ? 'failed' : 'completed',
-            content: text ? [{ type: 'content', content: { type: 'text', text } }] : null,
-            rawOutput: m
+            content: replayed.length > 0 ? replayed : null,
+            rawOutput: withoutImageData(m)
           }
         })
       }
