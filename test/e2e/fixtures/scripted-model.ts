@@ -62,4 +62,43 @@ export default function (pi: ExtensionAPI) {
       }
     }
   })
+
+  // Tools that make pi emit session events the adapter forwards.
+  const ok = (text: string) => ({ content: [{ type: 'text' as const, text }], details: undefined })
+  pi.registerTool({
+    name: 'rename_session',
+    label: 'Rename session',
+    description: 'Set the session name (emits session_info_changed).',
+    parameters: Type.Object({ name: Type.String() }),
+    async execute(_id, params) {
+      pi.setSessionName(params.name)
+      return ok('renamed')
+    }
+  })
+  pi.registerTool({
+    name: 'set_thinking',
+    label: 'Set thinking',
+    description: 'Set the thinking level (emits thinking_level_changed).',
+    parameters: Type.Object({ level: Type.String() }),
+    async execute(_id, params) {
+      pi.setThinkingLevel(params.level as Parameters<typeof pi.setThinkingLevel>[0])
+      return ok('thinking set')
+    }
+  })
+  let failNextTurnEnd = false
+  pi.registerTool({
+    name: 'arm_extension_error',
+    label: 'Arm extension error',
+    description: 'Make this extension throw at the next turn end (emits extension_error).',
+    parameters: Type.Object({}),
+    async execute() {
+      failNextTurnEnd = true
+      return ok('armed')
+    }
+  })
+  pi.on('turn_end', () => {
+    if (!failNextTurnEnd) return
+    failNextTurnEnd = false
+    throw new Error('fixture extension failure')
+  })
 }

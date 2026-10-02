@@ -173,6 +173,9 @@ export class PiAcpAgent implements ACPAgent {
   constructor(conn: AgentSideConnection, _config?: unknown) {
     this.conn = conn
     void _config
+    this.sessions.onConfigChanged = async session => {
+      await emitConfigOptionsUpdate(this.conn, session)
+    }
   }
 
   private async startBridge(

@@ -218,6 +218,8 @@ export class SessionManager {
   private readonly store = new SessionStore()
   /** The client's capabilities from `initialize`; omitted ones count as unsupported. */
   clientCapabilities: ClientCapabilities = {}
+  /** Called when pi changes session config on its own (e.g. thinking level); the agent re-sends config options. */
+  onConfigChanged: ((session: PiAcpSession) => Promise<void> | void) | undefined
 
   /** Dispose all sessions and their underlying pi subprocesses. */
   async disposeAll(): Promise<void> {
@@ -320,7 +322,8 @@ export class SessionManager {
       conn: params.conn,
       fileCommands: params.fileCommands ?? [],
       bridge: params.bridge,
-      clientCapabilities: this.clientCapabilities
+      clientCapabilities: this.clientCapabilities,
+      onConfigChanged: this.onConfigChanged
     })
 
     this.sessions.set(sessionId, session)
@@ -349,7 +352,8 @@ export class SessionManager {
       conn: params.conn,
       fileCommands: params.fileCommands ?? [],
       bridge: params.bridge,
-      clientCapabilities: this.clientCapabilities
+      clientCapabilities: this.clientCapabilities,
+      onConfigChanged: this.onConfigChanged
     })
 
     this.sessions.set(sessionId, session)
@@ -370,6 +374,7 @@ export class PiAcpSession {
   private readonly fileCommands: FileSlashCommand[]
   private readonly bridge: AcpMcpBridge | undefined
   private readonly clientCapabilities: ClientCapabilities
+  private readonly onConfigChanged: ((session: PiAcpSession) => Promise<void> | void) | undefined
 
   // Used to map abort semantics to ACP stopReason.
   // Applies to the currently running turn.
@@ -399,6 +404,8 @@ export class PiAcpSession {
   // for structured diffs in editor file-access mode (the disk may not have the edit yet).
   private readonly editorReads = new Map<string, string>()
   private readonly editorWrites = new Map<string, string>()
+  // A config-option refresh triggered by pi mid-turn; settled before the turn ends.
+  private pendingConfigRefresh: Promise<void> = Promise.resolve()
 
   // Current in-flight turn (if any). Additional prompts are queued.
   private pendingTurn: PendingTurn | null = null
@@ -432,6 +439,7 @@ export class PiAcpSession {
     fileCommands?: FileSlashCommand[]
     bridge?: AcpMcpBridge
     clientCapabilities?: ClientCapabilities
+    onConfigChanged?: (session: PiAcpSession) => Promise<void> | void
   }) {
     this.sessionId = opts.sessionId
     this.cwd = opts.cwd
@@ -441,6 +449,7 @@ export class PiAcpSession {
     this.fileCommands = opts.fileCommands ?? []
     this.bridge = opts.bridge
     this.clientCapabilities = opts.clientCapabilities ?? {}
+    this.onConfigChanged = opts.onConfigChanged
 
     this.proc.onEvent(ev => this.handlePiEvent(ev))
     this.proc.onExit?.((code, signal) => this.handleProcessExit(code, signal))
@@ -675,6 +684,7 @@ export class PiAcpSession {
     // Ensure all updates derived from pi events (plus the final usage update) are
     // delivered before we resolve the ACP `session/prompt` request.
     this.settledTurnStats = await this.publishContextUsage()
+    await this.pendingConfigRefresh
 
     const reason = this.settledStopReason()
     this.pendingTurn?.resolve(reason)
@@ -845,6 +855,35 @@ export class PiAcpSession {
     const type = String((ev as any).type ?? '')
 
     switch (type) {
+      case 'session_info_changed': {
+        // pi named (or unnamed) the session: the chat title follows.
+        this.emit({
+          sessionUpdate: 'session_info_update',
+          title: typeof ev.name === 'string' && ev.name ? ev.name : null,
+          updatedAt: new Date().toISOString()
+        })
+        break
+      }
+
+      case 'thinking_level_changed': {
+        // pi changed the level on its own (extension, cycle): keep the client's selector in sync.
+        // The turn waits for this refresh before it ends (see settleTurn).
+        this.pendingConfigRefresh = Promise.resolve(this.onConfigChanged?.(this)).catch(() => {})
+        break
+      }
+
+      case 'extension_error': {
+        // A failing pi extension would otherwise go unnoticed.
+        const path = typeof ev.extensionPath === 'string' ? basename(ev.extensionPath) : 'unknown extension'
+        const where = typeof ev.event === 'string' && ev.event ? ` (${ev.event})` : ''
+        const detail = typeof ev.error === 'string' ? ev.error : JSON.stringify(ev.error)
+        this.emit({
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: `pi extension error in ${path}${where}: ${detail}\n\n` } satisfies ContentBlock
+        })
+        break
+      }
+
       case 'message_start': {
         const message = ev.message as { role?: unknown } | undefined
         if (message?.role === 'assistant') this.currentMessageId = crypto.randomUUID()
