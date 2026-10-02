@@ -6,7 +6,7 @@ import {
   decodeFileRequest,
   encodeFileRequest,
   parseFileAccessMode
-} from '../../src/pi-extension/editor-files.js'
+} from '../../src/pi-extension/editor-files-protocol.js'
 import { FakeAgentSideConnection, FakePiRpcProcess, asAgentConn } from '../helpers/fakes.js'
 
 const FS = { fs: { readTextFile: true, writeTextFile: true } }

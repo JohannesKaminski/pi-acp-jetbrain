@@ -9,8 +9,6 @@
  * and carries each file request over pi's input dialog, marked so it can tell them apart.
  *
  * Images and other binary files always stay on disk: ACP's file API is text-only.
- * Self-contained on purpose (no relative runtime imports): pi loads it from dist/ in
- * real use and from source in the e2e tests.
  */
 import { access, mkdir, readFile } from 'node:fs/promises'
 import { extname } from 'node:path'
@@ -21,48 +19,17 @@ import {
   type ExtensionAPI,
   type ToolDefinition
 } from '@earendil-works/pi-coding-agent'
+import {
+  FILE_ACCESS_COMMAND,
+  IMAGE_TYPES,
+  encodeFileRequest,
+  parseFileAccessMode,
+  type EditorFileRequest,
+  type EditorFileResponse,
+  type FileAccessMode
+} from './editor-files-protocol.js'
 
-export type FileAccessMode = 'disk' | 'editor'
-
-/** Internal command the adapter sends (as an RPC prompt) to set the mode. */
-export const FILE_ACCESS_COMMAND = 'pi-acp-file-access'
-/** Prefix of the input-dialog title that marks an editor file request. */
-export const FILE_ACCESS_MARKER = '\u0000pi-acp-file-access:'
-
-export type EditorFileRequest = { op: 'read'; path: string } | { op: 'write'; path: string; content: string }
-export type EditorFileResponse = { ok: true; content?: string } | { ok: false; error: string }
-
-const IMAGE_TYPES: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp'
-}
-
-export function parseFileAccessMode(value: string | undefined): FileAccessMode | undefined {
-  const v = value?.trim()
-  return v === 'disk' || v === 'editor' ? v : undefined
-}
-
-export function encodeFileRequest(req: EditorFileRequest): string {
-  return `${FILE_ACCESS_MARKER}${JSON.stringify(req)}`
-}
-
-export function decodeFileRequest(title: unknown): EditorFileRequest | null {
-  if (typeof title !== 'string' || !title.startsWith(FILE_ACCESS_MARKER)) return null
-  try {
-    const req = JSON.parse(title.slice(FILE_ACCESS_MARKER.length)) as Partial<EditorFileRequest>
-    if (typeof req.path !== 'string') return null
-    if (req.op === 'read') return { op: 'read', path: req.path }
-    if (req.op === 'write' && typeof (req as { content?: unknown }).content === 'string') {
-      return { op: 'write', path: req.path, content: (req as { content: string }).content }
-    }
-    return null
-  } catch {
-    return null
-  }
-}
+export * from './editor-files-protocol.js'
 
 type DialogContext = { ui: { input(title: string, placeholder?: string): Promise<string | undefined> } }
 

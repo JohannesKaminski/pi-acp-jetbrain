@@ -44,7 +44,7 @@ import {
   type EditorFileRequest,
   type EditorFileResponse,
   type FileAccessMode
-} from '../pi-extension/editor-files.js'
+} from '../pi-extension/editor-files-protocol.js'
 import {
   APPROVAL_REJECT,
   TOOL_APPROVAL_COMMAND,

@@ -1,5 +1,5 @@
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
-import { parseFileAccessMode, type FileAccessMode } from '../pi-extension/editor-files.js'
+import { parseFileAccessMode, type FileAccessMode } from '../pi-extension/editor-files-protocol.js'
 
 // Adapter side of editor file access. The pi side (read/edit/write with swappable file
 // I/O) lives in src/pi-extension/editor-files.ts.

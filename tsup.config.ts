@@ -24,7 +24,9 @@ export default defineConfig({
     'src/pi-extension/tool-approval.ts',
     'src/pi-extension/editor-files.ts'
   ],
-  // Extensions run inside the host pi: use its pi-coding-agent, never a bundled copy.
+  // Never bundle pi-coding-agent. Extensions run inside the host pi and use its copy; the adapter
+  // must not import it at runtime at all (it's only a devDependency, absent in installs).
+  // scripts/smoke-pack.mjs installs the packed tarball cleanly to catch violations.
   external: ['@earendil-works/pi-coding-agent'],
   format: ['esm'],
   platform: 'node',

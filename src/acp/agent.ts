@@ -48,7 +48,7 @@ import { toolResultToText } from './translate/pi-tools.js'
 import { toolKind, toolTitle } from './translate/tool-call.js'
 import { TOOL_APPROVAL_CONFIG_ID } from './tool-approval.js'
 import { FILE_ACCESS_CONFIG_ID } from './file-access.js'
-import { parseFileAccessMode } from '../pi-extension/editor-files.js'
+import { parseFileAccessMode } from '../pi-extension/editor-files-protocol.js'
 import { sessionExtensionPaths } from './session-extensions.js'
 import { parseToolApprovalMode } from '../pi-extension/tool-approval.js'
 import {
