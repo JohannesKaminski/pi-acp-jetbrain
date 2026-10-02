@@ -19,7 +19,7 @@ function run(command, args, cwd) {
 
 function fail(message) {
   console.error(`FAIL check-pack: ${message}`)
-  rmSync(work, { recursive: true, force: true })
+  rmSync(work, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   process.exit(1)
 }
 
@@ -44,8 +44,9 @@ try {
   }
 
   const bin = process.platform === 'win32' ? join(prefix, 'pi-acp.cmd') : join(prefix, 'bin', 'pi-acp')
+  const child = crossSpawn(bin, [], { cwd: work, stdio: ['pipe', 'pipe', 'pipe'] })
+  const exited = new Promise(resolveExit => child.once('exit', resolveExit))
   const result = await new Promise((resolvePromise, reject) => {
-    const child = crossSpawn(bin, [], { cwd: work, stdio: ['pipe', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
     const timer = setTimeout(() => {
@@ -71,10 +72,13 @@ try {
       JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1 } }) + '\n'
     )
   })
+  // Let the adapter shut down (stdin closed) before removing its working directory: Windows
+  // refuses to delete a directory a running process still uses.
+  await Promise.race([exited, new Promise(r => setTimeout(r, 10_000))])
   if (result?.result?.protocolVersion !== 1) fail(`unexpected initialize response: ${JSON.stringify(result)}`)
 
   console.log(`OK check-pack (${tarballName}: clean install starts and answers initialize)`)
-  rmSync(work, { recursive: true, force: true })
+  rmSync(work, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error))
 }
