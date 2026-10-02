@@ -2,7 +2,7 @@
 // confirm the installed `pi-acp` starts and answers `initialize`. Catches anything that
 // works only inside this repo, e.g. a runtime import of a devDependency such as
 // pi-coding-agent (installs don't have it). Doesn't need pi: initialize never spawns it.
-import { execFileSync, spawn } from 'node:child_process'
+import crossSpawn from 'cross-spawn'
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -10,7 +10,12 @@ import { fileURLToPath } from 'node:url'
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const work = mkdtempSync(join(tmpdir(), 'pi-acp-pack-'))
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+// cross-spawn runs Windows .cmd launchers (npm, pi-acp), which Node refuses without a shell.
+function run(command, args, cwd) {
+  const result = crossSpawn.sync(command, args, { cwd, stdio: ['ignore', 'ignore', 'inherit'] })
+  if (result.error) throw result.error
+  if (result.status !== 0) throw new Error(`${command} ${args[0]} exited with ${result.status}`)
+}
 
 function fail(message) {
   console.error(`FAIL check-pack: ${message}`)
@@ -21,15 +26,12 @@ function fail(message) {
 try {
   // Pack (which builds via prepare) and find the tarball on disk. npm's stdout differs between
   // versions (npm 10 interleaves the build log even with --json), so it isn't parsed.
-  execFileSync(npm, ['pack', '--pack-destination', work], { cwd: root, stdio: ['ignore', 'ignore', 'inherit'] })
+  run('npm', ['pack', '--pack-destination', work], root)
   const tarballName = readdirSync(work).find(name => name.endsWith('.tgz'))
   if (!tarballName) fail('npm pack produced no tarball')
   const tarball = join(work, tarballName)
   const prefix = join(work, 'prefix')
-  execFileSync(npm, ['install', '-g', '--prefix', prefix, tarball, '--no-audit', '--no-fund'], {
-    cwd: work,
-    stdio: ['ignore', 'ignore', 'inherit']
-  })
+  run('npm', ['install', '-g', '--prefix', prefix, tarball, '--no-audit', '--no-fund'], work)
 
   const pkgDir =
     process.platform === 'win32'
@@ -43,7 +45,7 @@ try {
 
   const bin = process.platform === 'win32' ? join(prefix, 'pi-acp.cmd') : join(prefix, 'bin', 'pi-acp')
   const result = await new Promise((resolvePromise, reject) => {
-    const child = spawn(bin, [], { cwd: work, stdio: ['pipe', 'pipe', 'pipe'], shell: process.platform === 'win32' })
+    const child = crossSpawn(bin, [], { cwd: work, stdio: ['pipe', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
     const timer = setTimeout(() => {
