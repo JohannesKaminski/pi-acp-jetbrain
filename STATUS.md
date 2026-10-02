@@ -211,4 +211,5 @@ when hello_ack arrives during extension loading`).
 ## Gotchas
 
 - A rebuilt `dist` does not reload already-running IntelliJ-owned adapter processes.
+- IntelliJ caches some agent UI (e.g. the session-mode selector) until the IDE restarts; a new chat is not enough to see such changes.
 - `docs/` is gitignored; only `STATUS.md` is committed.
