@@ -2,7 +2,7 @@
 // binary from node_modules, whose model is scripted by fixtures/scripted-model.ts.
 // Everything runs in a temp dir with an isolated pi agent dir; no network, no keys.
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Readable, Writable } from 'node:stream'
@@ -43,6 +43,13 @@ export class E2EClient {
   readonly updates: SessionNotification[] = []
   readonly permissionRequests: RequestPermissionRequest[] = []
   readonly elicitationRequests: CreateElicitationRequest[] = []
+  /**
+   * The client's "editor": fs/read_text_file and fs/write_text_file are served from here
+   * (absolute path → text), falling back to the disk for reads, like an editor with unsaved
+   * buffers. Used when the test declares fs capabilities.
+   */
+  readonly editorFiles = new EditorFiles()
+  readonly fsRequests: Array<{ op: 'read' | 'write'; path: string }> = []
   /** Answers each elicitation request; defaults to cancel. */
   onElicitation: (req: CreateElicitationRequest) => CreateElicitationResponse = () => ({ action: 'cancel' })
   /** Answers each permission request; defaults to the first option. */
@@ -79,6 +86,16 @@ export class E2EClient {
       requestPermission: async params => {
         this.permissionRequests.push(params)
         return this.onPermission(params)
+      },
+      readTextFile: async params => {
+        this.fsRequests.push({ op: 'read', path: params.path })
+        const content = this.editorFiles.get(params.path) ?? readFileSync(params.path, 'utf8')
+        return { content }
+      },
+      writeTextFile: async params => {
+        this.fsRequests.push({ op: 'write', path: params.path })
+        this.editorFiles.set(params.path, params.content)
+        return {}
       },
       createElicitation: async params => {
         this.elicitationRequests.push(params)
@@ -141,10 +158,11 @@ export class E2EClient {
     // pi 0.99.2 startup race: when the default model comes from an extension provider, pi
     // occasionally starts with an `unknown` model and the first prompt fails with "No API key
     // found". Selecting the model explicitly (the real ACP model-switch path) makes it deterministic.
-    await this.withStderr(
+    const selected = await this.withStderr(
       this.conn.setSessionConfigOption({ sessionId: res.sessionId, configId: 'model', value: SCRIPTED_MODEL_ID })
     )
-    return res
+    // Options from before the selection may reflect the racy `unknown` model (e.g. thinking levels: only "off").
+    return { ...res, configOptions: selected.configOptions }
   }
 
   loadSession(sessionId: string): Promise<LoadSessionResponse> {
@@ -216,5 +234,29 @@ export class E2EClient {
     await exited
     clearTimeout(timer)
     rmSync(this.root, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Editor buffers keyed by real path: pi reports real paths (on macOS the temp dir under
+ * /var resolves to /private/var), while tests build paths from the workspace dir.
+ */
+export class EditorFiles {
+  private readonly files = new Map<string, string>()
+
+  private key(path: string): string {
+    try {
+      return realpathSync(path)
+    } catch {
+      return path
+    }
+  }
+
+  set(path: string, text: string): void {
+    this.files.set(this.key(path), text)
+  }
+
+  get(path: string): string | undefined {
+    return this.files.get(this.key(path))
   }
 }

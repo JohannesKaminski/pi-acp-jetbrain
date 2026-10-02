@@ -10,8 +10,8 @@ import type {
   SessionConfigOption
 } from '@agentclientprotocol/sdk'
 import { RequestError } from '@agentclientprotocol/sdk'
-import { readFileSync } from 'node:fs'
-import { isAbsolute, resolve as resolvePath } from 'node:path'
+import { readFileSync, realpathSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, resolve as resolvePath } from 'node:path'
 import {
   PiRpcProcess,
   PiRpcSpawnError,
@@ -35,12 +35,16 @@ import {
 } from './translate/bash.js'
 import { toolResultToText } from './translate/pi-tools.js'
 import { toolKind, toolTitle } from './translate/tool-call.js'
+import { sessionExtensionPaths } from './session-extensions.js'
+import { defaultToolApprovalMode, toolApprovalConfigOption, toolApprovalPermissionOptions } from './tool-approval.js'
+import { defaultFileAccessMode, fileAccessConfigOption } from './file-access.js'
 import {
-  defaultToolApprovalMode,
-  sessionExtensionPaths,
-  toolApprovalConfigOption,
-  toolApprovalPermissionOptions
-} from './tool-approval.js'
+  FILE_ACCESS_COMMAND,
+  decodeFileRequest,
+  type EditorFileRequest,
+  type EditorFileResponse,
+  type FileAccessMode
+} from '../pi-extension/editor-files.js'
 import {
   APPROVAL_REJECT,
   TOOL_APPROVAL_COMMAND,
@@ -83,7 +87,7 @@ const CONFIRM_PERMISSION_OPTIONS: PermissionOption[] = [
 ]
 const EXTENSION_UI_RAW_INPUT_KEYS = ['title', 'message', 'options', 'placeholder', 'prefill'] as const
 const CHOICE_OPTION_PREFIX = 'choice-'
-const TOOL_APPROVAL_PROBE_TIMEOUT_MS = 5_000
+const EXTENSION_PROBE_TIMEOUT_MS = 5_000
 
 /**
  * Map pi's `stats.contextUsage` (plus cumulative `cost`) to an ACP `usage_update`. Returns null whenever pi
@@ -118,6 +122,22 @@ function findUniqueLineNumber(text: string, needle: string): number | undefined 
     if (text.charCodeAt(i) === 10) line += 1
   }
   return line
+}
+
+/**
+ * Canonical absolute path (symlinks resolved), so paths pi reports (real paths) match paths
+ * the adapter derives from the session cwd. A file that doesn't exist yet resolves via its directory.
+ */
+function canonicalPath(p: string): string {
+  try {
+    return realpathSync(p)
+  } catch {
+    try {
+      return join(realpathSync(dirname(p)), basename(p))
+    } catch {
+      return p
+    }
+  }
 }
 
 function getToolPath(args: unknown): string | undefined {
@@ -361,13 +381,24 @@ export class PiAcpSession {
   // ACP messageId of the pi assistant message being streamed; its thinking and text
   // chunks share it. Chunks outside a pi message (adapter notices) get their own id.
   private currentMessageId: string | null = null
-  // Tool approval (see src/acp/tool-approval.ts). Initialized lazily on first use: checks
-  // that pi loaded the approval extension and applies the default mode.
-  private toolApprovalMode: ToolApprovalMode = 'off'
-  private toolApprovalAvailable = false
-  private toolApprovalInit: Promise<void> | null = null
-  // A mode change requested mid-turn; applied when the turn settles.
-  private pendingToolApprovalMode: ToolApprovalMode | null = null
+  // Settings carried out by the bundled pi extensions: tool approval (src/acp/tool-approval.ts)
+  // and editor file access (src/acp/file-access.ts). Initialized lazily on first use: one probe
+  // checks which extensions pi loaded, then each default is applied. `pending` holds a change
+  // requested mid-turn, applied when the turn settles.
+  private readonly extensionSettings = {
+    approval: {
+      command: TOOL_APPROVAL_COMMAND,
+      mode: 'off' as string,
+      available: false,
+      pending: null as string | null
+    },
+    files: { command: FILE_ACCESS_COMMAND, mode: 'disk' as string, available: false, pending: null as string | null }
+  }
+  private extensionSettingsInit: Promise<void> | null = null
+  // Text the editor returned and received per absolute path during the current tool call,
+  // for structured diffs in editor file-access mode (the disk may not have the edit yet).
+  private readonly editorReads = new Map<string, string>()
+  private readonly editorWrites = new Map<string, string>()
 
   // Current in-flight turn (if any). Additional prompts are queued.
   private pendingTurn: PendingTurn | null = null
@@ -649,10 +680,11 @@ export class PiAcpSession {
     this.pendingTurn?.resolve(reason)
     this.pendingTurn = null
 
-    if (this.pendingToolApprovalMode) {
-      const mode = this.pendingToolApprovalMode
-      this.pendingToolApprovalMode = null
-      await this.sendToolApprovalMode(mode).catch(() => {})
+    for (const setting of Object.values(this.extensionSettings)) {
+      const mode = setting.pending
+      if (mode === null) continue
+      setting.pending = null
+      await this.sendExtensionCommand(setting.command, mode).catch(() => {})
     }
 
     // Start next queued prompt, if any.
@@ -737,6 +769,12 @@ export class PiAcpSession {
   }
 
   private cleanupToolCall(toolCallId: string): void {
+    const snapshot = this.fileSnapshots.get(toolCallId)
+    if (snapshot) {
+      const key = canonicalPath(isAbsolute(snapshot.path) ? snapshot.path : resolvePath(this.cwd, snapshot.path))
+      this.editorReads.delete(key)
+      this.editorWrites.delete(key)
+    }
     this.currentToolCalls.delete(toolCallId)
     this.fileSnapshots.delete(toolCallId)
     this.fileMutationToolCallIds.delete(toolCallId)
@@ -1045,14 +1083,19 @@ export class PiAcpSession {
         if (!isError && snapshot) {
           try {
             const abs = isAbsolute(snapshot.path) ? snapshot.path : resolvePath(this.cwd, snapshot.path)
-            const newText = readFileSync(abs, 'utf8')
-            if (snapshot.oldText === null || newText !== snapshot.oldText) {
+            // In editor file-access mode the edit went to the editor, which may not have saved it yet:
+            // use the text the editor gave and received instead of the disk.
+            const key = canonicalPath(abs)
+            const editorNew = this.editorWrites.get(key)
+            const oldText = editorNew !== undefined ? (this.editorReads.get(key) ?? snapshot.oldText) : snapshot.oldText
+            const newText = editorNew ?? readFileSync(abs, 'utf8')
+            if (oldText === null || newText !== oldText) {
               hasStructuredDiff = true
               content = [
                 {
                   type: 'diff',
                   path: snapshot.path,
-                  oldText: snapshot.oldText,
+                  oldText,
                   newText
                 }
               ]
@@ -1168,7 +1211,9 @@ export class PiAcpSession {
     }
 
     if (method === 'input') {
-      await this.handleExtensionInput(ev, id)
+      const fileRequest = decodeFileRequest(ev.title)
+      if (fileRequest) await this.handleEditorFileRequest(id, fileRequest)
+      else await this.handleExtensionInput(ev, id)
       return
     }
 
@@ -1238,45 +1283,108 @@ export class PiAcpSession {
 
   /** The tool approval config option, or null when pi didn't load the approval extension. */
   async toolApprovalOption(): Promise<SessionConfigOption | null> {
-    await this.ensureToolApproval()
-    return this.toolApprovalAvailable ? toolApprovalConfigOption(this.toolApprovalMode) : null
+    await this.ensureExtensionSettings()
+    const { available, mode } = this.extensionSettings.approval
+    return available ? toolApprovalConfigOption(mode as ToolApprovalMode) : null
   }
 
   async setToolApprovalMode(mode: ToolApprovalMode): Promise<void> {
-    await this.ensureToolApproval()
-    if (!this.toolApprovalAvailable) {
-      throw RequestError.invalidParams(
-        undefined,
-        'Tool approval is unavailable: the pi approval extension is not loaded'
-      )
-    }
-    // An RPC prompt during a running turn could be queued as steering text; wait for the turn to settle.
-    if (this.pendingTurn) this.pendingToolApprovalMode = mode
-    else await this.sendToolApprovalMode(mode)
-    this.toolApprovalMode = mode
+    await this.setExtensionSetting(
+      'approval',
+      mode,
+      'Tool approval is unavailable: the pi approval extension is not loaded'
+    )
   }
 
-  private ensureToolApproval(): Promise<void> {
-    this.toolApprovalInit ??= (async () => {
+  /** The file access config option, or null without the extension or the client's fs support. */
+  async fileAccessOption(): Promise<SessionConfigOption | null> {
+    await this.ensureExtensionSettings()
+    const { available, mode } = this.extensionSettings.files
+    return available ? fileAccessConfigOption(mode as FileAccessMode) : null
+  }
+
+  async setFileAccessMode(mode: FileAccessMode): Promise<void> {
+    await this.setExtensionSetting(
+      'files',
+      mode,
+      'Editor file access is unavailable: it needs the pi file extension and client fs read/write support'
+    )
+  }
+
+  private async setExtensionSetting(
+    key: keyof PiAcpSession['extensionSettings'],
+    mode: string,
+    unavailable: string
+  ): Promise<void> {
+    await this.ensureExtensionSettings()
+    const setting = this.extensionSettings[key]
+    if (!setting.available) throw RequestError.invalidParams(undefined, unavailable)
+    // An RPC prompt during a running turn could be queued as steering text; wait for the turn to settle.
+    if (this.pendingTurn) setting.pending = mode
+    else await this.sendExtensionCommand(setting.command, mode)
+    setting.mode = mode
+  }
+
+  private ensureExtensionSettings(): Promise<void> {
+    this.extensionSettingsInit ??= (async () => {
+      let names = new Set<string>()
       try {
-        // Only send the internal command once pi lists it; otherwise the text would reach the model.
+        // Only send an internal command once pi lists it; otherwise the text would reach the model.
         // Bounded: a pi that never answers must not hold up session setup for the full RPC timeout.
-        const data = (await this.proc.getCommands?.(TOOL_APPROVAL_PROBE_TIMEOUT_MS)) as
+        const data = (await this.proc.getCommands?.(EXTENSION_PROBE_TIMEOUT_MS)) as
           | { commands?: Array<{ name?: unknown }> }
           | undefined
-        this.toolApprovalAvailable = Boolean(data?.commands?.some(c => c?.name === TOOL_APPROVAL_COMMAND))
-        const mode = defaultToolApprovalMode()
-        if (this.toolApprovalAvailable && mode !== 'off') await this.sendToolApprovalMode(mode)
-        this.toolApprovalMode = this.toolApprovalAvailable ? mode : 'off'
+        names = new Set((data?.commands ?? []).map(c => String(c?.name)))
       } catch {
-        this.toolApprovalAvailable = false
+        // Treat as no extensions loaded.
+      }
+      const { approval, files } = this.extensionSettings
+      const fs = this.clientCapabilities.fs
+      approval.available = names.has(approval.command)
+      files.available = names.has(files.command) && fs?.readTextFile === true && fs?.writeTextFile === true
+
+      const defaults: Array<[typeof approval, string, string]> = [
+        [approval, defaultToolApprovalMode(), 'off'],
+        [files, defaultFileAccessMode(), 'disk']
+      ]
+      for (const [setting, mode, inert] of defaults) {
+        if (!setting.available || mode === inert) continue
+        try {
+          await this.sendExtensionCommand(setting.command, mode)
+          setting.mode = mode
+        } catch {
+          // Keep the inert mode.
+        }
       }
     })()
-    return this.toolApprovalInit
+    return this.extensionSettingsInit
   }
 
-  private async sendToolApprovalMode(mode: ToolApprovalMode): Promise<void> {
-    await this.proc.prompt(`/${TOOL_APPROVAL_COMMAND} ${mode}`)
+  private async sendExtensionCommand(command: string, mode: string): Promise<void> {
+    await this.proc.prompt(`/${command} ${mode}`)
+  }
+
+  /** Serves the file extension's marked input dialog via the client's fs/read_text_file and fs/write_text_file. */
+  private async handleEditorFileRequest(id: string, req: EditorFileRequest): Promise<void> {
+    let res: EditorFileResponse
+    try {
+      if (req.op === 'read') {
+        const { content } = await this.conn.readTextFile({ sessionId: this.sessionId, path: req.path })
+        const key = canonicalPath(req.path)
+        if (!this.editorReads.has(key)) this.editorReads.set(key, content)
+        res = { ok: true, content }
+      } else {
+        await this.conn.writeTextFile({ sessionId: this.sessionId, path: req.path, content: req.content })
+        this.editorWrites.set(canonicalPath(req.path), req.content)
+        res = { ok: true }
+      }
+    } catch (error) {
+      res = {
+        ok: false,
+        error: `Editor ${req.op} failed for ${req.path}: ${(error as Error)?.message ?? String(error)}`
+      }
+    }
+    await this.proc.sendExtensionUiResponse({ id, value: JSON.stringify(res) })
   }
 
   /** Turns the approval extension's marked select dialog into an ACP permission request. */

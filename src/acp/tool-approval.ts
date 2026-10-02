@@ -1,7 +1,4 @@
 import type { PermissionOption, SessionConfigOption } from '@agentclientprotocol/sdk'
-import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import {
   APPROVAL_ALLOW_ALWAYS,
   APPROVAL_ALLOW_ONCE,
@@ -44,23 +41,4 @@ export function toolApprovalPermissionOptions(toolName: string): PermissionOptio
     { optionId: APPROVAL_ALLOW_ALWAYS, name: `Always allow ${toolName} in this session`, kind: 'allow_always' },
     { optionId: APPROVAL_REJECT, name: 'Reject', kind: 'reject_once' }
   ]
-}
-
-let cachedExtensionPath: string | null | undefined
-/** The approval extension: built JS next to dist/index.js, or the TS source when run via tsx. */
-export function resolveToolApprovalExtensionPath(): string | null {
-  if (cachedExtensionPath !== undefined) return cachedExtensionPath
-  const here = dirname(fileURLToPath(import.meta.url))
-  const candidates = [
-    join(here, 'pi-extension', 'tool-approval.js'),
-    join(here, '..', 'pi-extension', 'tool-approval.ts')
-  ]
-  cachedExtensionPath = candidates.find(c => existsSync(c)) ?? null
-  return cachedExtensionPath
-}
-
-/** Extensions for a session's pi process: tool approval first, then any bridge extension. */
-export function sessionExtensionPaths(bridgePaths: string[] = []): string[] {
-  const approval = resolveToolApprovalExtensionPath()
-  return approval ? [approval, ...bridgePaths] : [...bridgePaths]
 }

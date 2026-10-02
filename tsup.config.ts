@@ -18,7 +18,14 @@ function gitDirty(): boolean {
 }
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/pi-extension/acp-mcp-bridge.ts', 'src/pi-extension/tool-approval.ts'],
+  entry: [
+    'src/index.ts',
+    'src/pi-extension/acp-mcp-bridge.ts',
+    'src/pi-extension/tool-approval.ts',
+    'src/pi-extension/editor-files.ts'
+  ],
+  // Extensions run inside the host pi: use its pi-coding-agent, never a bundled copy.
+  external: ['@earendil-works/pi-coding-agent'],
   format: ['esm'],
   platform: 'node',
   target: 'node22',

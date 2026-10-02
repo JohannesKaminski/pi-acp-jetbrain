@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { PiAcpAgent } from '../../src/acp/agent.js'
 import { PiRpcProcess } from '../../src/pi-rpc/process.js'
 import { FakeAgentSideConnection, asAgentConn } from '../helpers/fakes.js'
-import { sessionExtensionPaths } from '../../src/acp/tool-approval.js'
+import { sessionExtensionPaths } from '../../src/acp/session-extensions.js'
 
 // noinspection JSUnusedGlobalSymbols
 class FakeSessions {

@@ -46,7 +46,10 @@ import { sessionStatsToAcpUsage } from './usage.js'
 import { piModelsToProviderInfo } from './providers.js'
 import { toolResultToText } from './translate/pi-tools.js'
 import { toolKind, toolTitle } from './translate/tool-call.js'
-import { TOOL_APPROVAL_CONFIG_ID, sessionExtensionPaths } from './tool-approval.js'
+import { TOOL_APPROVAL_CONFIG_ID } from './tool-approval.js'
+import { FILE_ACCESS_CONFIG_ID } from './file-access.js'
+import { parseFileAccessMode } from '../pi-extension/editor-files.js'
+import { sessionExtensionPaths } from './session-extensions.js'
 import { parseToolApprovalMode } from '../pi-extension/tool-approval.js'
 import {
   bashCommand,
@@ -1713,6 +1716,10 @@ export class PiAcpAgent implements ACPAgent {
       const mode = parseToolApprovalMode(params.value)
       if (!mode) throw RequestError.invalidParams(undefined, `Unknown tool approval mode: ${params.value}`)
       await session.setToolApprovalMode(mode)
+    } else if (configId === FILE_ACCESS_CONFIG_ID) {
+      const mode = parseFileAccessMode(params.value)
+      if (!mode) throw RequestError.invalidParams(undefined, `Unknown file access mode: ${params.value}`)
+      await session.setFileAccessMode(mode)
     } else {
       throw RequestError.invalidParams(undefined, `Unknown config option: ${configId}`)
     }
@@ -1753,14 +1760,15 @@ async function getThinkingState(
   }
 }
 
-/** Appends the session-level options (tool approval) to pi's model and thinking options. */
+/** Appends the session-level options (tool approval, file access) to pi's model and thinking options. */
 async function withSessionConfigOptions(
   session: PiAcpSession | undefined,
   configOptions: SessionConfigOption[]
 ): Promise<SessionConfigOption[]> {
-  // Tests sometimes stub sessions without the approval API.
+  // Tests sometimes stub sessions without these APIs.
   const approval = typeof session?.toolApprovalOption === 'function' ? await session.toolApprovalOption() : null
-  return approval ? [...configOptions, approval] : configOptions
+  const files = typeof session?.fileAccessOption === 'function' ? await session.fileAccessOption() : null
+  return [...configOptions, ...[approval, files].filter((o): o is SessionConfigOption => o !== null)]
 }
 
 async function getSessionConfiguration(
