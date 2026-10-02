@@ -3,7 +3,7 @@ import { isAbsolute, relative, sep } from 'node:path'
 import { bashCommand } from './bash.js'
 
 // Titles and kinds for pi's built-in tools (read, bash, powershell, edit, write, grep,
-// find, ls). Argument names follow pi 0.99.2's tool schemas. Anything else, including
+// find, ls). Argument names follow pi 1.0's tool schemas. Anything else, including
 // extension and MCP tools, keeps its pi tool name as title and kind `other`.
 
 export function toolKind(toolName: string): ToolKind {

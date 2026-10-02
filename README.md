@@ -19,7 +19,7 @@ npm package: `pi-acp-jetbrain` (see the version badge for the current release). 
 
 ## Install
 
-You need Node.js 22.19 or newer and pi 0.99.2 or newer with a working model (run `pi` once in a terminal to check).
+You need Node.js 22.19 or newer and pi 1.0.0 or newer with a working model (run `pi` once in a terminal to check).
 
 The adapter loads its bundled pi extensions (IDE bridge, tool approval, file access) into every pi session it starts, so installing the adapter is enough. `pi install` additionally registers the IDE bridge as a pi package; it is optional.
 
@@ -159,7 +159,7 @@ The adapter covers the session surface: `session/new`, `session/prompt`, `sessio
 
 Reopening a chat (IntelliJ uses `session/load`) replays the history from pi's stored session, tool calls included, with the same titles and kinds as live.
 
-Each session starts with a pi startup block. Set `quietStartup: true` in pi settings to hide it.
+Each session starts with a startup block (adapter build, pi version, loaded context, skills, prompts, and extensions). It follows pi's `quietStartup` setting: `true` hides it, and `"header"` keeps the version lines and hides the listing. An update notice and IDE bridge problems still show.
 
 ### Session settings
 

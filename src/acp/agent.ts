@@ -63,7 +63,7 @@ import {
 } from './translate/bash.js'
 import { promptToPiMessage } from './translate/prompt.js'
 import { loadSlashCommands, parseCommandArgs, toAvailableCommands, withFileCommandInputs } from './slash-commands.js'
-import { getAgentDir, getEnableSkillCommands, getQuietStartup } from './pi-settings.js'
+import { getAgentDir, getEnableSkillCommands, getQuietStartup, getQuietStartupMode } from './pi-settings.js'
 import { toAvailableCommandsFromPiGetCommands } from './pi-commands.js'
 import { maybeAuthRequiredError } from './auth-required.js'
 import {
@@ -512,24 +512,27 @@ export class PiAcpAgent implements ACPAgent {
     const { models } = configuration
     const configOptions = await withSessionConfigOptions(session, configuration.configOptions)
 
-    const quietStartup = getQuietStartup(params.cwd)
+    const quietStartup = getQuietStartupMode(params.cwd)
     const updateNotice = buildUpdateNotice()
 
     // If quietStartup is enabled, suppress the full "startup info" prelude, but still surface
     // the "New version available" notice (if any) since it's high-signal and actionable.
-    const preludeText = quietStartup
-      ? updateNotice
-        ? updateNotice + '\n'
-        : ''
-      : buildStartupInfo({
-          cwd: params.cwd,
-          fileCommands,
-          updateNotice,
-          bridgeStatus: bridge.hasServers ? bridge.status : undefined,
-          bridgeTools: registeredBridgeTools(bridge),
-          bridgeProjectPath: bridge.projectPath,
-          bridgeCatalogComplete: bridge.catalogComplete
-        })
+    // "header" keeps the version header (and problems) without the resource listing.
+    const preludeText =
+      quietStartup === 'quiet'
+        ? updateNotice
+          ? updateNotice + '\n'
+          : ''
+        : buildStartupInfo({
+            headerOnly: quietStartup === 'header',
+            cwd: params.cwd,
+            fileCommands,
+            updateNotice,
+            bridgeStatus: bridge.hasServers ? bridge.status : undefined,
+            bridgeTools: registeredBridgeTools(bridge),
+            bridgeProjectPath: bridge.projectPath,
+            bridgeCatalogComplete: bridge.catalogComplete
+          })
 
     if (preludeText) session.setStartupInfo(preludeText)
 
@@ -2108,6 +2111,8 @@ export function buildBridgeStartupInfo(opts: {
 }
 
 export function buildStartupInfo(opts: {
+  /** pi `quietStartup: "header"`: version header, IDE bridge problems and update notice only. */
+  headerOnly?: boolean
   cwd: string
   fileCommands: ReturnType<typeof loadSlashCommands>
   updateNotice: string | null
@@ -2143,6 +2148,8 @@ export function buildStartupInfo(opts: {
   }
 
   const addSection = (title: string, items: string[]) => {
+    // Header-only keeps actionable problems and drops the resource listing.
+    if (opts.headerOnly && title !== 'IDE Bridge') return
     const cleaned = items.map(s => s.trim()).filter(Boolean)
     if (!cleaned.length) return
 

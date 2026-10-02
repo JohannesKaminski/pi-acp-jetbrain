@@ -61,15 +61,21 @@ export function getEnableSkillCommands(cwd: string): boolean {
  * Mirror pi's quietStartup setting: if true, pi suppresses the verbose startup prelude.
  * We use it to decide whether to synthesize + emit our own "startup info" message.
  */
-export function getQuietStartup(cwd: string): boolean {
+/**
+ * pi's `quietStartup`: `true` hides the startup block, `"header"` (pi 1.0) keeps the version
+ * header and hides the resource listing, `false` or unset shows everything.
+ */
+export type QuietStartupMode = 'off' | 'header' | 'quiet'
+
+export function getQuietStartupMode(cwd: string): QuietStartupMode {
   const merged = getMergedSettings(cwd)
+  // Back-compat: some versions used quietStart.
+  const value = merged.quietStartup ?? (merged as Record<string, unknown>).quietStart
+  if (value === 'header') return 'header'
+  return value === true ? 'quiet' : 'off'
+}
 
-  const direct = merged.quietStartup
-  if (typeof direct === 'boolean') return direct
-
-  // Back-compat: some versions used quietStart
-  const legacy = (merged as any).quietStart
-  if (typeof legacy === 'boolean') return legacy
-
-  return false
+/** Whether pi hides at least the resource listing (`true` or `"header"`). */
+export function getQuietStartup(cwd: string): boolean {
+  return getQuietStartupMode(cwd) !== 'off'
 }
