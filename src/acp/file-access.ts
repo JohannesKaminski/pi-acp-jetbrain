@@ -11,9 +11,12 @@ const MODE_NAMES: Record<FileAccessMode, string> = {
   editor: 'Through the editor'
 }
 
-/** Default mode for new sessions: PI_ACP_FILE_ACCESS=disk|editor (default disk). */
+/**
+ * Default mode for new sessions: PI_ACP_FILE_ACCESS=disk|editor (default editor). Only applies
+ * when the client supports fs reads and writes; other clients always use the disk.
+ */
 export function defaultFileAccessMode(): FileAccessMode {
-  return parseFileAccessMode(process.env.PI_ACP_FILE_ACCESS) ?? 'disk'
+  return parseFileAccessMode(process.env.PI_ACP_FILE_ACCESS) ?? 'editor'
 }
 
 export function fileAccessConfigOption(mode: FileAccessMode): SessionConfigOption {

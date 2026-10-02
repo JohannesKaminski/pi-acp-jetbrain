@@ -27,14 +27,9 @@ test('e2e: "Through the editor" reads unsaved editor text and writes edits to th
     writeFileSync(file, 'saved text on disk\n')
     c.editorFiles.set(file, 'unsaved text in the editor\n')
 
+    // "Through the editor" is the default whenever the client supports fs reads and writes.
     const created = await c.newSession()
-    assert.equal(fileAccessOption(created.configOptions)?.currentValue, 'disk')
-    const res = await c.conn.setSessionConfigOption({
-      sessionId: created.sessionId,
-      configId: 'file_access',
-      value: 'editor'
-    })
-    assert.equal(fileAccessOption(res.configOptions)?.currentValue, 'editor')
+    assert.equal(fileAccessOption(created.configOptions)?.currentValue, 'editor')
 
     assert.equal((await c.prompt(created.sessionId, 'go')).stopReason, 'end_turn', c.stderrTail())
 
@@ -57,12 +52,14 @@ test('e2e: "Through the editor" reads unsaved editor text and writes edits to th
   }
 })
 
-test('e2e: in the default "Disk" mode the editor is never asked', async () => {
+test('e2e: switching to "Disk" stops asking the editor', async () => {
   const c = E2EClient.start({ clientCapabilities: FS, script: READ_THEN_EDIT })
   try {
     const file = join(c.workspace, 'notes.txt')
     writeFileSync(file, 'unsaved? no, saved on disk\n')
     const { sessionId } = await c.newSession()
+    const res = await c.conn.setSessionConfigOption({ sessionId, configId: 'file_access', value: 'disk' })
+    assert.equal(fileAccessOption(res.configOptions)?.currentValue, 'disk')
     assert.equal((await c.prompt(sessionId, 'go')).stopReason, 'end_turn')
     assert.deepEqual(c.fsRequests, [])
     assert.equal(readFileSync(file, 'utf8'), 'EDITED? no, saved on disk\n')
@@ -85,17 +82,17 @@ test('e2e: without client fs support the file access option is not offered', asy
   }
 })
 
-test('e2e: PI_ACP_FILE_ACCESS=editor makes the editor the default', async () => {
-  const c = E2EClient.start({ clientCapabilities: FS, env: { PI_ACP_FILE_ACCESS: 'editor' }, script: READ_THEN_EDIT })
+test('e2e: PI_ACP_FILE_ACCESS=disk keeps the disk as the default', async () => {
+  const c = E2EClient.start({ clientCapabilities: FS, env: { PI_ACP_FILE_ACCESS: 'disk' }, script: READ_THEN_EDIT })
   try {
     const file = join(c.workspace, 'notes.txt')
-    writeFileSync(file, 'disk\n')
-    c.editorFiles.set(file, 'unsaved\n')
+    writeFileSync(file, 'unsaved on disk\n')
+    c.editorFiles.set(file, 'unsaved in the editor\n')
     const created = await c.newSession()
-    assert.equal(fileAccessOption(created.configOptions)?.currentValue, 'editor')
+    assert.equal(fileAccessOption(created.configOptions)?.currentValue, 'disk')
     assert.equal((await c.prompt(created.sessionId, 'go')).stopReason, 'end_turn')
-    assert.equal(c.editorFiles.get(file), 'EDITED\n')
-    assert.equal(readFileSync(file, 'utf8'), 'disk\n')
+    assert.deepEqual(c.fsRequests, [])
+    assert.equal(readFileSync(file, 'utf8'), 'EDITED on disk\n')
   } finally {
     await c.close()
   }

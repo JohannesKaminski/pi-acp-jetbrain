@@ -42,7 +42,7 @@ test('PiAcpSession: file access needs both fs capabilities from the client', asy
   assert.equal(await readOnly.fileAccessOption(), null)
 
   const full = makeSession(new FakePiRpcProcess(), new FakeAgentSideConnection())
-  assert.equal((await full.fileAccessOption())?.currentValue, 'disk')
+  assert.equal((await full.fileAccessOption())?.currentValue, 'editor', 'editor is the default with fs support')
 })
 
 test('PiAcpSession: a failing editor read is reported back to pi as an error, not as empty text', async () => {
