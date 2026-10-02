@@ -73,7 +73,7 @@ Copy the tarball to the other machine and install it with pi:
 pi install npm:/full/path/to/pi-acp-jetbrain-<version>.tgz
 ```
 
-pi installs the adapter and its dependencies under `~/.pi/agent/npm/`. Point IntelliJ at that copy with `"command": "/Users/<you>/.pi/agent/npm/node_modules/.bin/pi-acp"`. Keep the tarball where you installed it from: pi records that path. To update, copy a new tarball over it, run the same `pi install` again, and restart the IDE. `npm install -g ./pi-acp-jetbrain-<version>.tgz` works too and puts `pi-acp` on your PATH.
+pi installs the adapter and its dependencies under `~/.pi/agent/npm/`. Point IntelliJ at that copy with `"command": "<home>/.pi/agent/npm/node_modules/.bin/pi-acp"`, written out as an absolute path (`echo ~` prints your home folder, e.g. `/home/<you>` on Linux or `/Users/<you>` on macOS). Keep the tarball where you installed it from: pi records that path. To update, copy a new tarball over it, run the same `pi install` again, and restart the IDE. `npm install -g ./pi-acp-jetbrain-<version>.tgz` works too and puts `pi-acp` on your PATH.
 
 The package version does not change between local builds. The startup block and `initialize` report the build revision (git commit), which tells builds apart.
 
@@ -87,7 +87,7 @@ Use `"command": "node"` with `"args": ["/path/to/pi-acp-jetbrain/dist/index.js"]
 
 ### Register the adapter in IntelliJ
 
-In the AI Chat tool window, open the menu in the upper-right corner and choose **Add Custom Agent**. IntelliJ creates `~/.jetbrains/acp.json` (the file and folder do not exist before) and opens it. A complete example:
+In the AI Chat tool window, open the menu in the upper-right corner and choose **Add Custom Agent**. IntelliJ creates `~/.jetbrains/acp.json` (the file and folder do not exist before) and opens it. A complete example; replace the placeholders with the absolute paths from `which pi-acp`, `which node`, and `which pi`:
 
 ```json
 {
@@ -97,16 +97,17 @@ In the AI Chat tool window, open the menu in the upper-right corner and choose *
   },
   "agent_servers": {
     "pi-acp-jetbrain": {
-      "command": "/opt/homebrew/bin/pi-acp",
+      "command": "/path/to/pi-acp",
       "args": [],
-      "env": { "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" }
+      "env": { "PATH": "/folder/of/node:/folder/of/pi:/usr/local/bin:/usr/bin:/bin" }
     }
   }
 }
 ```
 
 - `use_idea_mcp` is off by default in IntelliJ. Without it IntelliJ sends no IDE tools, and the IDE bridge has nothing to expose.
-- An IDE started from the Dock does not see your shell's PATH. `pi-acp`, `npx`, and pi's launcher all start with `#!/usr/bin/env node`, so the `PATH` in `env` must contain the folders of both `node` and `pi` (check with `which node` and `which pi`). A missing folder shows up as "ACP process exited unexpectedly. Exit code 127". With nvm or similar version managers, these folders include the Node version.
+- `pi-acp`, `npx`, and pi's launcher all start with `#!/usr/bin/env node`, so the agent process needs the folders of both `node` and `pi` on its PATH. Depending on how the IDE was started (desktop launcher, Dock, JetBrains Toolbox), it may not see the PATH your shell sets up in `.bashrc`, `.zshrc`, or `.profile`. Setting `PATH` in `env` makes it explicit, but it replaces the inherited PATH rather than adding to it: list every folder the adapter needs. A missing folder shows up as "ACP process exited unexpectedly. Exit code 127".
+- Typical folders: `/usr/local/bin` or `/usr/bin` for system packages, `/opt/homebrew/bin` for Homebrew on Apple silicon, and `~/.nvm/versions/node/<version>/bin` (written out absolutely) for nvm; other version managers have similar versioned folders.
 - Without relying on PATH: use the full path to `node` as `command`, the adapter's `dist/index.js` as the argument, and set `PI_ACP_PI_COMMAND` to the full path of `pi`.
 - Restart the IDE after changing `acp.json`, and open a new chat after updating the adapter. IntelliJ reuses running agent processes and caches some agent UI until it restarts.
 
