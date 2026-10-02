@@ -11,6 +11,7 @@ import type {
 } from '@agentclientprotocol/sdk'
 import { RequestError } from '@agentclientprotocol/sdk'
 import { readFileSync, realpathSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, resolve as resolvePath } from 'node:path'
 import {
   PiRpcProcess,
@@ -35,6 +36,7 @@ import {
 } from './translate/bash.js'
 import { toolResultImages, toolResultToText, withoutImageData } from './translate/pi-tools.js'
 import { toolKind, toolTitle } from './translate/tool-call.js'
+import { parseSelectionPointer, renderSelections } from './translate/selection.js'
 import { sessionExtensionEnv, sessionExtensionPaths } from './session-extensions.js'
 import { defaultToolApprovalMode, toolApprovalConfigOption, toolApprovalPermissionOptions } from './tool-approval.js'
 import { defaultFileAccessMode, fileAccessConfigOption } from './file-access.js'
@@ -1321,6 +1323,33 @@ export class PiAcpSession {
     }
 
     await this.proc.sendExtensionUiResponse({ id, confirmed: selected.outcome.optionId === 'yes' })
+  }
+
+  /**
+   * Replaces IntelliJ selection pointers (byte offsets in an embedded JSON resource) with the
+   * selected text and its line range. The file is read the way the session's file access says
+   * (the editor includes unsaved changes; offsets refer to the editor's text). Blocks that
+   * can't be resolved pass through unchanged.
+   */
+  async resolveSelectionPointers<T>(blocks: T[]): Promise<T[]> {
+    if (!blocks.some(b => parseSelectionPointer(b))) return blocks
+    await this.ensureExtensionSettings()
+    const viaEditor = this.extensionSettings.files.available && this.extensionSettings.files.mode === 'editor'
+    return Promise.all(
+      blocks.map(async block => {
+        const pointer = parseSelectionPointer(block)
+        if (!pointer) return block
+        try {
+          const content = viaEditor
+            ? (await this.conn.readTextFile({ sessionId: this.sessionId, path: pointer.path })).content
+            : await readFile(pointer.path, 'utf8')
+          const text = renderSelections(content, pointer, this.cwd)
+          return text ? ({ type: 'text', text } as T) : block
+        } catch {
+          return block
+        }
+      })
+    )
   }
 
   /** The tool approval config option, or null when pi didn't load the approval extension. */

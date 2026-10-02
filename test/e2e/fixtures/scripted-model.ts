@@ -16,15 +16,15 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import type { ScriptedModelScript, ScriptedBlock } from './script.js'
 
+function textOf(message: unknown): string {
+  const content = (message as { content?: unknown } | undefined)?.content
+  if (typeof content === 'string') return content
+  return Array.isArray(content) ? content.map(b => (b as { text?: string }).text ?? '').join('') : ''
+}
+
 /** The system prompt of a model request: `systemPrompt`, or pi's system-role messages (pi 1.0). */
 function systemPromptOf(context: Context): string {
-  const fromMessages = context.messages
-    .filter(m => (m as { role: string }).role === 'system')
-    .map(m => {
-      const content = (m as { content?: unknown }).content
-      if (typeof content === 'string') return content
-      return Array.isArray(content) ? content.map(b => (b as { text?: string }).text ?? '').join('') : ''
-    })
+  const fromMessages = context.messages.filter(m => (m as { role: string }).role === 'system').map(textOf)
   return [context.systemPrompt ?? '', ...fromMessages].filter(Boolean).join('\n')
 }
 
@@ -55,7 +55,10 @@ export default function (pi: ExtensionAPI) {
   const capture = process.env.PI_ACP_E2E_CAPTURE
   faux.setResponses(
     script.responses.map(r => (context: Context) => {
-      if (capture) appendFileSync(capture, `${JSON.stringify({ systemPrompt: systemPromptOf(context) })}\n`)
+      if (capture) {
+        const userText = textOf([...context.messages].reverse().find(m => (m as { role: string }).role === 'user'))
+        appendFileSync(capture, `${JSON.stringify({ systemPrompt: systemPromptOf(context), userText })}\n`)
+      }
       return fauxAssistantMessage(r.content.map(toBlock), {
         stopReason: r.stopReason ?? (r.content.some(b => 'tool' in b) ? 'toolUse' : 'stop'),
         errorMessage: r.errorMessage

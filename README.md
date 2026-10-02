@@ -202,6 +202,10 @@ When a turn settles the adapter makes one `get_session_stats` call and reports t
 
 The adapter also sends `usage_update` on `session/new` and `session/load`, and after a model switch. Right after compaction pi has no trusted token count, so the client keeps the previous value.
 
+### Attached files and selections
+
+IntelliJ attaches a file as a link and an editor selection as a pointer in byte offsets, not as text. The adapter resolves the pointer before pi sees the prompt: it reads the file the way the File access setting says (through the editor, unsaved changes included, or from disk), and gives pi the selected code with its file and line range. A pointer that doesn't fit the file passes through unchanged. Embedded context (`PI_ACP_ENABLE_EMBEDDED_CONTEXT`) makes no difference in IntelliJ, which sends the same blocks either way.
+
 ### Input requests
 
 Text input requests from pi extensions use ACP elicitation when the client declares form elicitation in `initialize`; otherwise they are cancelled with a visible notice. Requests that fit permissions route through ACP permissions. An editor request shows a cancellation notice because elicitation forms hold primitive fields only.

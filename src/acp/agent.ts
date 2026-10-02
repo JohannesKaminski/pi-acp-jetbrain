@@ -614,7 +614,12 @@ export class PiAcpAgent implements ACPAgent {
   async prompt(params: PromptRequest): Promise<PromptResponse> {
     const session = await this.restoreSession(params.sessionId)
 
-    const { message, images } = promptToPiMessage(params.prompt)
+    // IntelliJ attaches selections as byte-offset pointers; give pi the selected text instead.
+    const prompt =
+      typeof session.resolveSelectionPointers === 'function'
+        ? await session.resolveSelectionPointers(params.prompt)
+        : params.prompt
+    const { message, images } = promptToPiMessage(prompt)
 
     // Built-in ACP slash command handling (headless-friendly subset).
     // Note: file-based slash commands are expanded inside session.prompt().
